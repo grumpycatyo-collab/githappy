@@ -1,0 +1,1106 @@
+Directory structure:
+└── githappy/
+    ├── README.md
+    ├── CHANGELOG.md
+    ├── Dockerfile
+    ├── VERSION
+    ├── __init__.py
+    ├── config.yml
+    ├── db.py
+    ├── docker-compose.yml
+    ├── main.py
+    ├── models.py
+    ├── requirements.txt
+    ├── .env.example
+    ├── api/
+    │   ├── __init__.py
+    │   ├── health.py
+    │   ├── main.py
+    │   └── routes/
+    │       ├── __init__.py
+    │       └── auth.py
+    ├── core/
+    │   ├── __init__.py
+    │   ├── auth.py
+    │   ├── config.py
+    │   ├── logger.py
+    │   └── settings.py
+    ├── logs/
+    └── tests/
+        ├── __init__.py
+        └── test_health.py
+
+================================================
+File: README.md
+================================================
+# fastcookie
+cookiecutter template for FastAPI 
+
+# githappy
+
+Personal Changelog API to track your life like a GitHub project
+
+## Features
+
+- FastAPI framework
+- Health check endpoints
+- API versioning
+- Configuration with pydantic_settings
+- Docker setup with dynamic reloading
+
+## Requirements
+
+- Python 3.11
+- Docker and Docker Compose (optional)
+
+## Installation
+
+### Local development
+
+1. Create a virtual environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+
+
+================================================
+File: CHANGELOG.md
+================================================
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## 0.1.0 - 2025-05-14
+
+### Added
+- Initial project structure
+- Health check endpoint
+- API versioning
+- Configuration with pydantic_settings
+- Docker setup with dynamic reloading
+
+
+================================================
+File: Dockerfile
+================================================
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Set environment variables
+ENV PYTHONPATH=/app \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Install dependencies
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Ruff for linting
+RUN pip install --no-cache-dir ruff~=0.11
+
+# Create logs directory
+RUN mkdir -p /app/logs
+
+# Copy project
+COPY . /app/
+
+
+# Command to run the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+
+================================================
+File: VERSION
+================================================
+0.1.0
+
+
+================================================
+File: __init__.py
+================================================
+"""githappy package."""
+
+from pathlib import Path
+
+with open(Path(__file__).parent / "VERSION") as version_file:
+    __version__ = version_file.read().strip()
+
+
+
+================================================
+File: config.yml
+================================================
+# Application configuration
+app:
+  name: "githappy"
+  description: "Personal Changelog API to track your life like a GitHub project"
+
+# Environment configuration
+environment:
+  development:
+    debug: true
+    cors_origins:
+      - http://localhost
+      - http://localhost:8000
+  testing:
+    debug: true
+    cors_origins:
+      - http://localhost
+      - http://localhost:8000
+  production:
+    debug: false
+    cors_origins:
+      - https://example.com
+
+
+================================================
+File: db.py
+================================================
+"""In-memory database implementation using cachetools."""
+
+import functools
+from cachetools import LRUCache
+from typing import Dict, List, Optional, Type, TypeVar, Generic
+from uuid import UUID
+
+from core.logger import logger
+from models import ChangelogEntry, Tag, User
+
+
+T = TypeVar('T')
+
+
+class Database(Generic[T]):
+    """
+    In-memory database using LRUCache.
+
+    Parameters
+    ----------
+    model_class : Type
+        The model class this database stores
+    cache_size : int, optional
+        Size of the LRU cache, by default 1000
+    """
+
+    def __init__(self, model_class: Type[T], cache_size: int = 1000):
+        """
+        Initialize database with specified model class and cache size.
+
+        Parameters
+        ----------
+        model_class : Type[T]
+            Model class to store
+        cache_size : int, optional
+            Size of the LRU cache, by default 1000
+        """
+        self.model_class = model_class
+        self.cache = LRUCache(maxsize=cache_size)
+        self._name = model_class.__name__
+        logger.info(f"Initialized {self._name} database with cache size {cache_size}")
+
+    def get(self, id: UUID) -> Optional[T]:
+        """
+        Get an item by ID.
+
+        Parameters
+        ----------
+        id : UUID
+            Item ID
+
+        Returns
+        -------
+        Optional[T]
+            Found item or None
+        """
+        return self.cache.get(str(id))
+
+    def create(self, item: T) -> T:
+        """
+        Create a new item.
+
+        Parameters
+        ----------
+        item : T
+            Item to create
+
+        Returns
+        -------
+        T
+            Created item
+        """
+        self.cache[str(item.id)] = item
+        logger.debug(f"Created {self._name} with ID {item.id}")
+        return item
+
+    def update(self, id: UUID, item: T) -> Optional[T]:
+        """
+        Update an existing item.
+
+        Parameters
+        ----------
+        id : UUID
+            Item ID
+        item : T
+            Updated item
+
+        Returns
+        -------
+        Optional[T]
+            Updated item or None if not found
+        """
+        if str(id) in self.cache:
+            self.cache[str(id)] = item
+            logger.debug(f"Updated {self._name} with ID {id}")
+            return item
+        return None
+
+    def delete(self, id: UUID) -> bool:
+        """
+        Delete an item by ID.
+
+        Parameters
+        ----------
+        id : UUID
+            Item ID
+
+        Returns
+        -------
+        bool
+            True if deleted, False if not found
+        """
+        if str(id) in self.cache:
+            del self.cache[str(id)]
+            logger.debug(f"Deleted {self._name} with ID {id}")
+            return True
+        return False
+
+    def list_all(self) -> List[T]:
+        """
+        List all items.
+
+        Returns
+        -------
+        List[T]
+            List of all items
+        """
+        return list(self.cache.values())
+
+    def find_by(self, field: str, value) -> List[T]:
+        """
+        Find items by field value.
+
+        Parameters
+        ----------
+        field : str
+            Field name to search
+        value : Any
+            Value to search for
+
+        Returns
+        -------
+        List[T]
+            List of matching items
+        """
+        return [item for item in self.cache.values() if getattr(item, field) == value]
+
+
+# Initialize databases
+user_db = Database[User](User)
+tag_db = Database[Tag](Tag)
+changelog_db = Database[ChangelogEntry](ChangelogEntry)
+
+
+
+
+
+================================================
+File: docker-compose.yml
+================================================
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - API_ENV=development
+      - LOG_LEVEL=INFO
+      - SECRET_KEY=dev_secret_key_change_in_production
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+
+================================================
+File: main.py
+================================================
+"""Main application module."""
+
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+
+from api.main import router
+from core.config import get_settings
+from core.logger import logger
+
+settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Handle startup and shutdown events.
+
+    Args:
+        app: FastAPI application
+    """
+    # Startup
+    logger.info("Starting up application")
+    yield
+    # Shutdown
+    logger.info("Shutting down application")
+
+
+app = FastAPI(
+    title=settings.app_name,
+    description=settings.app_description,
+    debug=settings.debug,
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/", include_in_schema=False)
+async def root_redirect():
+    """Redirect root path to docs."""
+    return RedirectResponse(url="/docs")
+
+
+app.include_router(router, prefix="/api")
+
+logger.info(f"Application {settings.app_name} initialized")
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+
+================================================
+File: models.py
+================================================
+"""Core data models for ReleaseJoy API."""
+
+from datetime import datetime
+from enum import Enum
+from typing import Dict, List, Optional, Union
+from uuid import UUID, uuid4
+
+from pydantic import BaseModel, Field
+
+
+class Role(str, Enum):
+    """User role enum."""
+
+    USER = "WRITER"  # Regular user can create and edit entries
+    ADMIN = "ADMIN" # Admin can delete entries
+    VISITOR = "VISITOR" # Visitor can only view entries
+
+
+class User(BaseModel):
+    """
+    User model.
+
+    Attributes
+    ----------
+    id : UUID
+        Unique identifier
+    username : str
+        Username
+    password_hash : str
+        Hashed password
+    """
+
+    id: UUID = Field(default_factory=uuid4)
+    username: str
+    password_hash: str
+
+
+class Tag(BaseModel):
+    """
+    Tag model.
+
+    Attributes
+    ----------
+    id : UUID
+        Unique identifier
+    name : str
+        Tag name
+    user_id : UUID
+        Owner user ID
+    """
+
+    id: UUID = Field(default_factory=uuid4)
+    name: str
+    user_id: UUID
+
+
+class ChangelogEntry(BaseModel):
+    """
+    Changelog entry model.
+
+    Attributes
+    ----------
+    id : UUID
+        Unique identifier
+    user_id : UUID
+        Owner user ID
+    title : str
+        Entry title
+    highlights : str
+        Highlights of the week
+    bugs : str
+        Bugs or issues encountered
+    reflections : str
+        Reflections on the week
+    week_number : int
+        Week number
+    tags : List[UUID]
+        List of tag IDs
+    is_public : bool
+        Whether the entry is public
+    created_at : datetime
+        Creation timestamp
+    """
+
+    id: UUID = Field(default_factory=uuid4)
+    user_id: UUID
+    title: str
+    highlights: str
+    bugs: str
+    reflections: str
+    week_number: int
+    tags: List[UUID] = Field(default_factory=list)
+    is_public: bool = False
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
+================================================
+File: requirements.txt
+================================================
+fastapi~=0.115
+loguru~=0.7
+pathlib~=1.0
+setuptools~=75.8
+uvicorn~=0.34
+pydantic-settings~=2.9
+PyYAML>=6.0
+bcrypt~=4.1.2
+pyjwt~=2.8.0
+cachetools~=5.3.3
+strawberry-graphql~=0.225.0
+
+
+================================================
+File: .env.example
+================================================
+
+
+
+================================================
+File: api/__init__.py
+================================================
+"""API package."""
+
+
+
+================================================
+File: api/health.py
+================================================
+"""Health check endpoint."""
+
+from fastapi import APIRouter, status
+
+router = APIRouter(tags=["health"])
+
+
+@router.get("/health", status_code=status.HTTP_200_OK)
+async def health_check():
+    """Health check endpoint."""
+    return {"status": "healthy"}
+
+
+@router.get("/readiness", status_code=status.HTTP_200_OK)
+async def readiness():
+    """Readiness endpoint."""
+    return {"status": "ready"}
+
+
+
+================================================
+File: api/main.py
+================================================
+"""REST API routes for GitHappy API."""
+
+from fastapi import APIRouter
+
+from api.routes.auth import router as auth_router
+# from api.routes.changelog import router as changelog_router
+# from api.routes.tags import router as tags_router
+from api.health import router as health_router
+
+router = APIRouter()
+
+router.include_router(health_router)
+router.include_router(auth_router, prefix="/auth", tags=["Authentication"])
+# router.include_router(changelog_router, prefix="/changelog", tags=["Changelog"])
+# router.include_router(tags_router, prefix="/tags", tags=["Tags"])
+from models import User
+from db import user_db
+from core.logger import logger
+from core.auth import get_password_hash
+demo_user = User(
+    username="demo",
+    password_hash=get_password_hash("password123")
+)
+user_db.create(demo_user)
+logger.info(f"Created demo user with ID {demo_user.id}")
+
+
+================================================
+File: api/routes/__init__.py
+================================================
+
+
+
+================================================
+File: api/routes/auth.py
+================================================
+"""Authentication routes for ReleaseJoy API."""
+
+from datetime import timedelta
+from typing import Dict
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+
+from core.auth import authenticate_user, create_token, get_current_user, TokenData
+from core.logger import logger
+from models import User
+
+router = APIRouter()
+
+
+class TokenRequest(BaseModel):
+    """
+    Token request model.
+
+    Attributes
+    ----------
+    username : str
+        Username
+    password : str
+        Password
+    """
+
+    username: str
+    password: str
+
+
+class Token(BaseModel):
+    """
+    Token response model.
+
+    Attributes
+    ----------
+    access_token : str
+        JWT access token
+    token_type : str
+        Token type (always "bearer")
+    expires_in : int
+        Token expiration time in seconds
+    user_id : str
+        User ID
+    username : str
+        Username
+    """
+
+    access_token: str
+    token_type: str
+    expires_in: int
+    user_id: str
+    username: str
+
+
+@router.post("/token", response_model=Token)
+async def login_for_access_token(form_data: TokenRequest) -> Token:
+    """
+    Authenticate user and return access token.
+
+    Parameters
+    ----------
+    form_data : TokenRequest
+        Authentication data
+
+    Returns
+    -------
+    Token
+        JWT token and user info
+
+    Raises
+    ------
+    HTTPException
+        401 error if authentication fails
+    """
+    user = authenticate_user(form_data.username, form_data.password)
+    if not user:
+        logger.warning(f"Failed login attempt for user: {form_data.username}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Token expires in 1 minute for demo purposes
+    expires_delta = timedelta(minutes=1)
+
+    token_data = {
+        "user_id": str(user.id),
+        "username": user.username,
+        "role": "WRITER"  # Default role for demo user
+    }
+
+    access_token = create_token(token_data, expires_delta)
+
+    logger.info(f"User {form_data.username} logged in")
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=60,  # 1 minute in seconds
+        user_id=str(user.id),
+        username=user.username
+    )
+
+
+@router.get("/me")
+async def read_users_me(current_user: TokenData = Depends(get_current_user)) -> Dict:
+    """
+    Get current user info.
+
+    Parameters
+    ----------
+    current_user : TokenData
+        Current authenticated user
+
+    Returns
+    -------
+    Dict
+        User info
+    """
+    return {
+        "user_id": current_user.user_id,
+        "username": current_user.username,
+        "role": current_user.role
+    }
+
+
+================================================
+File: core/__init__.py
+================================================
+"""Core package."""
+
+
+
+================================================
+File: core/auth.py
+================================================
+"""Authentication utilities for ReleaseJoy API."""
+
+from datetime import datetime, timedelta
+from typing import Dict, Optional
+
+import bcrypt
+import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel
+
+from core.config import get_settings
+from core.logger import logger
+from db import user_db
+from models import Role, User
+
+settings = get_settings()
+security = HTTPBearer()
+
+
+class TokenData(BaseModel):
+    """
+    Token data model.
+
+    Attributes
+    ----------
+    user_id : str
+        User ID
+    role : Role
+        User role
+    username : str
+        Username
+    """
+
+    user_id: str
+    role: Role = Role.USER
+    username: str
+
+
+def get_password_hash(password: str) -> str:
+    """
+    Hash a password using bcrypt.
+
+    Parameters
+    ----------
+    password : str
+        Password to hash
+
+    Returns
+    -------
+    str
+        Hashed password
+    """
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """
+    Verify a password against a hash.
+
+    Parameters
+    ----------
+    plain_password : str
+        Plain password
+    hashed_password : str
+        Hashed password
+
+    Returns
+    -------
+    bool
+        True if password matches hash
+    """
+    return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
+
+
+def authenticate_user(username: str, password: str) -> Optional[User]:
+    """
+    Authenticate a user with username and password.
+
+    Parameters
+    ----------
+    username : str
+        Username
+    password : str
+        Password
+
+    Returns
+    -------
+    Optional[User]
+        User if authenticated, None otherwise
+    """
+    users = user_db.find_by("username", username)
+    if not users:
+        return None
+    user = users[0]
+    if not verify_password(password, user.password_hash):
+        return None
+    return user
+
+
+def create_token(data: Dict, expires_delta: Optional[timedelta] = None) -> str:
+    """
+    Create a JWT token.
+
+    Parameters
+    ----------
+    data : Dict
+        Token data
+    expires_delta : Optional[timedelta], optional
+        Token expiration time, by default None (1 minute)
+
+    Returns
+    -------
+    str
+        JWT token
+    """
+    to_encode = data.copy()
+
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=1)  # 1 minute expiration
+
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm="HS256")
+    return encoded_jwt
+
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> TokenData:
+    """
+    Get the current user from JWT token.
+
+    Parameters
+    ----------
+    credentials : HTTPAuthorizationCredentials, optional
+        HTTP authorization credentials
+
+    Returns
+    -------
+    TokenData
+        Token data with user info
+
+    Raises
+    ------
+    HTTPException
+        401 error if token is invalid
+    """
+    try:
+        token = credentials.credentials
+        payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
+        user_id = payload.get("user_id")
+        username = payload.get("username")
+        role = payload.get("role", Role.USER.value)
+
+        if user_id is None or username is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        token_data = TokenData(
+            user_id=user_id,
+            role=Role(role),
+            username=username
+        )
+        return token_data
+    except jwt.PyJWTError as e:
+        logger.error(f"JWT decode error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+================================================
+File: core/config.py
+================================================
+"""Configuration handling."""
+
+import os
+from pathlib import Path
+
+import yaml
+
+from .settings import Settings
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def get_config() -> dict:
+    """Load config from YAML file."""
+    config_path = os.environ.get("CONFIG_PATH", BASE_DIR / "config.yml")
+    with open(config_path, "r") as file:
+        return yaml.safe_load(file)
+
+
+def get_settings() -> Settings:
+    """Get application settings."""
+    config = get_config()
+    return Settings(config=config)
+
+
+
+================================================
+File: core/logger.py
+================================================
+"""Logger configuration."""
+
+import os
+import sys
+
+from loguru import logger
+
+from core.config import get_settings
+
+settings = get_settings()
+
+
+def configure_logger():
+    """Configure the logger with common settings."""
+    # Create logs directory if it doesn't exist
+    os.makedirs("logs", exist_ok=True)
+
+    # Remove default logger
+    logger.remove()
+
+    # Configure console logger with pretty formatting and colors
+    logger.add(
+        sys.stdout,
+        level=settings.log_level,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        colorize=True,
+    )
+
+    # Configure file logger with rotation
+    logger.add(
+        "logs/app.log",
+        rotation="10 MB",
+        retention="1 week",
+        level=settings.log_level,
+        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
+        enqueue=True,  # Makes logging thread-safe
+    )
+
+    # Configure JSON logger for structured logging (useful for log analysis tools)
+    if settings.api_env.value == "production":
+        logger.add(
+            "logs/app.json",
+            rotation="10 MB",
+            retention="1 week",
+            level=settings.log_level,
+            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level} | {name}:{function}:{line} - {message}",
+            serialize=True,
+            enqueue=True,
+        )
+
+    logger.info(f"Logger configured with level {settings.log_level}")
+    return logger
+
+
+logger = configure_logger()
+
+
+
+================================================
+File: core/settings.py
+================================================
+"""Application settings."""
+
+from enum import Enum
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Environment(str, Enum):
+    """Environment enum."""
+
+    DEVELOPMENT = "development"
+    TESTING = "testing"
+    PRODUCTION = "production"
+
+
+# TODO: Work on settings and config management (not good for now)
+class Settings(BaseSettings):
+    """Application settings."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    # From environment variables
+    api_env: Environment = Field(default=Environment.DEVELOPMENT, env="API_ENV")
+    log_level: str = Field(default="INFO", env="LOG_LEVEL")
+    secret_key: str = Field(default="default_insecure_key", env="SECRET_KEY")
+
+    # From config.yml
+    config: dict = {}
+
+    @property
+    def app_name(self) -> str:
+        """Get application name."""
+        return self.config.get("app", {}).get("name", "githappy")
+
+    @property
+    def app_description(self) -> str:
+        """Get application description."""
+        return self.config.get("app", {}).get(
+            "description", "Personal Changelog API to track your life like a GitHub project"
+        )
+
+    @property
+    def debug(self) -> bool:
+        """Get debug mode."""
+        return (
+            self.config.get("environment", {}).get(self.api_env, {}).get("debug", False)
+        )
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """Get CORS origins."""
+        return (
+            self.config.get("environment", {})
+            .get(self.api_env, {})
+            .get("cors_origins", [])
+        )
+
+
+
+
+================================================
+File: tests/__init__.py
+================================================
+"""Tests package."""
+
+
+
+================================================
+File: tests/test_health.py
+================================================
+"""Health check tests."""
+
+from fastapi.testclient import TestClient
+
+from main import app
+
+client = TestClient(app)
+
+
+def test_health_check():
+    """Test health check endpoint."""
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "healthy"}
+
+
+def test_readiness():
+    """Test readiness endpoint."""
+    response = client.get("/api/readiness")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ready"}
+
+
+def test_version():
+    """Test version endpoint."""
+    response = client.get("/api/version")
+    assert response.status_code == 200
+    assert "version" in response.json()
+
+
