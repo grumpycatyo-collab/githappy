@@ -1,4 +1,5 @@
-"""Authentication routes for ReleaseJoy API."""
+# File: api/routes/auth.py (update)
+"""Authentication routes for Githappy API."""
 
 from datetime import timedelta
 from typing import Dict
@@ -9,50 +10,9 @@ from pydantic import BaseModel
 
 from core.auth import authenticate_user, create_token, get_current_user, TokenData
 from core.logger import logger
-from models import User
+from models import Role, Token, TokenRequest, User
 
 router = APIRouter()
-
-
-class TokenRequest(BaseModel):
-    """
-    Token request model.
-
-    Attributes
-    ----------
-    username : str
-        Username
-    password : str
-        Password
-    """
-
-    username: str
-    password: str
-
-
-class Token(BaseModel):
-    """
-    Token response model.
-
-    Attributes
-    ----------
-    access_token : str
-        JWT access token
-    token_type : str
-        Token type (always "bearer")
-    expires_in : int
-        Token expiration time in seconds
-    user_id : str
-        User ID
-    username : str
-        Username
-    """
-
-    access_token: str
-    token_type: str
-    expires_in: int
-    user_id: str
-    username: str
 
 
 @router.post("/token", response_model=Token)
@@ -87,21 +47,26 @@ async def login_for_access_token(form_data: TokenRequest) -> Token:
     # Token expires in 1 minute for demo purposes
     expires_delta = timedelta(minutes=1)
 
+    # For demo purposes, allow requesting a specific role
+    # In a real application, roles would be stored in the user database
+    role = form_data.requested_role if form_data.requested_role else Role.USER
+
     token_data = {
         "user_id": str(user.id),
         "username": user.username,
-        "role": "WRITER"  # Default role for demo user
+        "role": role.value
     }
 
     access_token = create_token(token_data, expires_delta)
 
-    logger.info(f"User {form_data.username} logged in")
+    logger.info(f"User {form_data.username} logged in with role {role}")
     return Token(
         access_token=access_token,
         token_type="bearer",
         expires_in=60,  # 1 minute in seconds
         user_id=str(user.id),
-        username=user.username
+        username=user.username,
+        role=role
     )
 
 

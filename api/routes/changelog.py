@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from core.auth import TokenData, get_current_user
 from core.logger import logger
+from core.sentiment import enrich_entry
+
 from db import changelog_db, tag_db
 from models import ChangelogEntry, Role
 
@@ -116,7 +118,7 @@ async def create_changelog_entry(
         )
 
     entry.user_id = UUID(current_user.user_id)
-
+    entry = enrich_entry(entry)
     created_entry = changelog_db.create(entry)
     logger.info(f"Created changelog entry with ID {created_entry.id}")
 
@@ -174,6 +176,7 @@ async def update_changelog_entry(
     updated_entry.id = entry_id
     updated_entry.user_id = existing_entry.user_id
 
+    updated_entry = enrich_entry(updated_entry)
     result = changelog_db.update(entry_id, updated_entry)
 
     if not result:
