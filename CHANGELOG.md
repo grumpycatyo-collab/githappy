@@ -20,3 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add authorization endpoints
 - Add auth utils to core
+
+## 1.0.0
+
+### Added
+- Complete API for managing personal changelogs + tags
+- Add user authentication and authorization
+- MongoDB integration for data storage
