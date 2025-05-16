@@ -192,7 +192,6 @@ class TokenRequest(BaseModel):
 
     username: str
     password: str
-    requested_role: Optional[Role] = None
 
 
 class Token(BaseModel):
