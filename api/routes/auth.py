@@ -1,58 +1,15 @@
-"""Authentication routes for ReleaseJoy API."""
+"""Authentication routes for GitHappy API."""
 
 from datetime import timedelta
 from typing import Dict
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 
-from core.auth import authenticate_user, create_token, get_current_user, TokenData
+from core.auth import authenticate_user, create_token, get_current_user, TokenData, get_password_hash
 from core.logger import logger
-from models import User
+from models import Role, Token, TokenRequest, User, UserCreate
 
 router = APIRouter()
-
-
-class TokenRequest(BaseModel):
-    """
-    Token request model.
-
-    Attributes
-    ----------
-    username : str
-        Username
-    password : str
-        Password
-    """
-
-    username: str
-    password: str
-
-
-class Token(BaseModel):
-    """
-    Token response model.
-
-    Attributes
-    ----------
-    access_token : str
-        JWT access token
-    token_type : str
-        Token type (always "bearer")
-    expires_in : int
-        Token expiration time in seconds
-    user_id : str
-        User ID
-    username : str
-        Username
-    """
-
-    access_token: str
-    token_type: str
-    expires_in: int
-    user_id: str
-    username: str
 
 
 @router.post("/token", response_model=Token)
@@ -87,21 +44,26 @@ async def login_for_access_token(form_data: TokenRequest) -> Token:
     # Token expires in 1 minute for demo purposes
     expires_delta = timedelta(minutes=1)
 
+    # For demo purposes, allow requesting a specific role
+    # In a real application, roles would be stored in the user database
+    role = form_data.requested_role if form_data.requested_role else Role.USER
+
     token_data = {
         "user_id": str(user.id),
         "username": user.username,
-        "role": "WRITER"  # Default role for demo user
+        "role": role.value
     }
 
     access_token = create_token(token_data, expires_delta)
 
-    logger.info(f"User {form_data.username} logged in")
+    logger.info(f"User {form_data.username} logged in with role {role}")
     return Token(
         access_token=access_token,
         token_type="bearer",
         expires_in=60,  # 1 minute in seconds
         user_id=str(user.id),
-        username=user.username
+        username=user.username,
+        role=role
     )
 
 
@@ -125,3 +87,67 @@ async def read_users_me(current_user: TokenData = Depends(get_current_user)) -> 
         "username": current_user.username,
         "role": current_user.role
     }
+
+from core.db import user_db
+
+@router.get("/demo-token/{role}")
+async def get_demo_token(role: Role) -> Token:
+    """
+    Get a demo token with a specific role.
+    For demonstration purposes only.
+
+    Parameters
+    ----------
+    role : Role
+        Role to include in the token
+
+    Returns
+    -------
+    Token
+        JWT token with specified role
+    """
+    # Create a token for the demo user
+    demo_users = user_db.find_by("username", "demo")
+    if not demo_users:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo user not found",
+        )
+
+    demo_user = demo_users[0]
+
+    # Token expires in 5 minutes for demo purposes
+    expires_delta = timedelta(minutes=5)
+
+    token_data = {
+        "user_id": str(demo_user.id),
+        "username": demo_user.username,
+        "role": role.value
+    }
+
+    access_token = create_token(token_data, expires_delta)
+
+    logger.info(f"Created demo token with role {role}")
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=300,  # 5 minutes in seconds
+        user_id=str(demo_user.id),
+        username=demo_user.username,
+        role=role
+    )
+
+@router.post("/register", response_model=User, status_code=status.HTTP_201_CREATED)
+async def register_user(user_data: UserCreate):
+    # Check if username already exists
+    existing_users = user_db.find_by("username", user_data.username)
+    if existing_users:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already exists",
+        )
+    hashed_password = get_password_hash(user_data.password)
+    user = User(username=user_data.username, password_hash=hashed_password)
+    created_user = user_db.create(user)
+
+    return User(id=created_user.id, username=created_user.username, password_hash="********")  # Don't return the password hash

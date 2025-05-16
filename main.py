@@ -9,6 +9,7 @@ from fastapi.responses import RedirectResponse
 from api.main import router
 from core.config import get_settings
 from core.logger import logger
+from version import __version__
 
 settings = get_settings()
 
@@ -33,6 +34,7 @@ app = FastAPI(
     description=settings.app_description,
     debug=settings.debug,
     lifespan=lifespan,
+    version=__version__
 )
 
 app.add_middleware(

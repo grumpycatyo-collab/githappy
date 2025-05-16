@@ -14,7 +14,6 @@ class Environment(str, Enum):
     PRODUCTION = "production"
 
 
-# TODO: Work on settings and config management (not good for now)
 class Settings(BaseSettings):
     """Application settings."""
 
@@ -26,6 +25,8 @@ class Settings(BaseSettings):
     api_env: Environment = Field(default=Environment.DEVELOPMENT, env="API_ENV")
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
     secret_key: str = Field(default="default_insecure_key", env="SECRET_KEY")
+    mongodb_uri: str = Field(default="mongodb://localhost:27017", env="MONGODB_URI")
+    mongodb_name: str = "githappy"  # Default database name
 
     # From config.yml
     config: dict = {}
