@@ -155,7 +155,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         if user_id is None or username is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials",
+                detail="Invalid token content",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
@@ -165,6 +165,13 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             username=username
         )
         return token_data
+    except jwt.ExpiredSignatureError:
+        logger.warning("Token expired")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     except jwt.PyJWTError as e:
         logger.error(f"JWT decode error: {str(e)}")
         raise HTTPException(
@@ -172,3 +179,4 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+

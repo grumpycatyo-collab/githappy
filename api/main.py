@@ -18,6 +18,7 @@ from models import User
 from db import user_db
 from core.logger import logger
 from core.auth import get_password_hash
+
 demo_user = User(
     username="demo",
     password_hash=get_password_hash("password123")

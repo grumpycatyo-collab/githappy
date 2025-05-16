@@ -189,3 +189,37 @@ class Token(BaseModel):
     user_id: str
     username: str
     role: Role
+
+class ChangelogEntryCreate(BaseModel):
+    """
+    Model for creating a changelog entry.
+
+    Only includes fields that need to be provided by the user.
+    """
+    title: str
+    entry_type: EntryType
+    content: str
+    mood: Optional[Mood] = None
+    tags: List[UUID] = Field(default_factory=list)
+
+
+class ChangelogEntryUpdate(BaseModel):
+    """
+    Model for updating a changelog entry.
+
+    All fields are optional since users may want to update only specific fields.
+    """
+    title: Optional[str] = None
+    entry_type: Optional[EntryType] = None
+    content: Optional[str] = None
+    mood: Optional[Mood] = None
+    tags: Optional[List[UUID]] = None
+
+
+class TagCreate(BaseModel):
+    """
+    Model for creating a tag.
+
+    Only includes fields that need to be provided by the user.
+    """
+    name: str

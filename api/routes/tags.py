@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from core.auth import TokenData, get_current_user
 from core.logger import logger
 from db import tag_db
-from models import Role, Tag
+from models import Tag, TagCreate, Role
 
 router = APIRouter()
 
@@ -48,14 +48,14 @@ async def get_tags(
 
 
 @router.post("/", response_model=Tag, status_code=status.HTTP_201_CREATED)
-async def create_tag(tag: Tag, current_user: TokenData = Depends(get_current_user)):
+async def create_tag(tag_data: TagCreate, current_user: TokenData = Depends(get_current_user)):
     """
     Create a new tag.
 
     Parameters
     ----------
-    tag : Tag
-        Tag to create
+    tag_data : TagCreate
+        Data for the new tag
     current_user : TokenData
         Current authenticated user
 
@@ -70,14 +70,18 @@ async def create_tag(tag: Tag, current_user: TokenData = Depends(get_current_use
         403 if user doesn't have permission
     """
     # Check if user has write permission
+    print(current_user)
     if current_user.role == Role.VISITOR:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have permission to create tags",
         )
 
-    # Override the user_id with the current user's ID
-    tag.user_id = UUID(current_user.user_id)
+    # Create a new Tag from the provided data
+    tag = Tag(
+        name=tag_data.name,
+        user_id=UUID(current_user.user_id)
+    )
 
     # Create the tag
     created_tag = tag_db.create(tag)

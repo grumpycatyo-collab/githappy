@@ -9,8 +9,8 @@ from core.logger import logger
 from core.sentiment import enrich_entry
 
 from db import changelog_db, tag_db
-from models import ChangelogEntry, Role
-
+from models import ChangelogEntry, ChangelogEntryCreate, ChangelogEntryUpdate, Role
+from datetime import datetime
 router = APIRouter()
 
 
@@ -89,16 +89,16 @@ async def get_changelog_entry(
 
 @router.post("/", response_model=ChangelogEntry, status_code=status.HTTP_201_CREATED)
 async def create_changelog_entry(
-        entry: ChangelogEntry, current_user: TokenData = Depends(get_current_user)
+        entry_data: ChangelogEntryCreate, current_user: TokenData = Depends(get_current_user)
 ):
     """
     Create a new changelog entry.
 
     Parameters
     ----------
-    entry
-        Entry to create
-    current_user
+    entry_data : ChangelogEntryCreate
+        Data for the new entry
+    current_user : TokenData
         Current authenticated user
 
     Returns
@@ -117,8 +117,18 @@ async def create_changelog_entry(
             detail="You don't have permission to create entries",
         )
 
-    entry.user_id = UUID(current_user.user_id)
+    entry = ChangelogEntry(
+        user_id=UUID(current_user.user_id),
+        title=entry_data.title,
+        entry_type=entry_data.entry_type,
+        content=entry_data.content,
+        mood=entry_data.mood,
+        tags=entry_data.tags,
+        week_number=datetime.now().isocalendar()[1],
+    )
+
     entry = enrich_entry(entry)
+
     created_entry = changelog_db.create(entry)
     logger.info(f"Created changelog entry with ID {created_entry.id}")
 
@@ -128,7 +138,7 @@ async def create_changelog_entry(
 @router.put("/{entry_id}", response_model=ChangelogEntry)
 async def update_changelog_entry(
         entry_id: UUID,
-        updated_entry: ChangelogEntry,
+        entry_data: ChangelogEntryUpdate,
         current_user: TokenData = Depends(get_current_user),
 ):
     """
@@ -136,11 +146,11 @@ async def update_changelog_entry(
 
     Parameters
     ----------
-    entry_id
+    entry_id : UUID
         Entry ID
-    updated_entry
-        Updated entry
-    current_user
+    entry_data : ChangelogEntryUpdate
+        Updated data
+    current_user : TokenData
         Current authenticated user
 
     Returns
@@ -154,6 +164,7 @@ async def update_changelog_entry(
         404 if entry not found
         403 if user doesn't have permission
     """
+    # Check if entry exists
     existing_entry = changelog_db.get(entry_id)
     if not existing_entry:
         raise HTTPException(
@@ -161,22 +172,36 @@ async def update_changelog_entry(
             detail="Entry not found",
         )
 
+    # Check if the entry belongs to the user or user is admin
     if str(existing_entry.user_id) != current_user.user_id and current_user.role != Role.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have permission to update this entry",
         )
 
+    # Check if user has write permission
     if current_user.role == Role.VISITOR:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have permission to update entries",
         )
 
-    updated_entry.id = entry_id
-    updated_entry.user_id = existing_entry.user_id
+    # Update the entry with the provided data, keeping existing values where no update is provided
+    updated_data = existing_entry.model_dump()
 
-    updated_entry = enrich_entry(updated_entry)
+    # Update only the fields that are provided
+    update_data = {k: v for k, v in entry_data.model_dump(exclude_unset=True).items() if v is not None}
+    updated_data.update(update_data)
+
+    # Create a new entry with the updated data
+    updated_entry = ChangelogEntry(**updated_data)
+    updated_entry.updated_at = datetime.now()
+
+    # Re-analyze sentiment and gitmojis if content or title was updated
+    if "content" in update_data or "title" in update_data:
+        updated_entry = enrich_entry(updated_entry)
+
+    # Update the entry
     result = changelog_db.update(entry_id, updated_entry)
 
     if not result:
@@ -232,3 +257,35 @@ async def delete_changelog_entry(
 
     logger.info(f"Deleted changelog entry with ID {entry_id}")
     return None
+
+@router.get("/week/{week_number}", response_model=list[ChangelogEntry])
+async def get_entries_by_week(
+        week_number: int,
+        year: int = Query(datetime.now().year, description="Year for the week number"),
+        current_user: TokenData = Depends(get_current_user),
+):
+    """
+    Get all changelog entries for a specific week.
+
+    Parameters
+    ----------
+    week_number : int
+        Week number
+    year : int
+        Year for the week number
+    current_user : TokenData
+        Current authenticated user
+
+    Returns
+    -------
+    List[ChangelogEntry]
+        List of changelog entries for the week
+    """
+    # Get all entries for the user
+    user_entries = changelog_db.find_by("user_id", UUID(current_user.user_id))
+
+    # Filter entries by week number
+    week_entries = [entry for entry in user_entries if entry.week_number == week_number]
+
+    logger.info(f"Retrieved {len(week_entries)} changelog entries for week {week_number}")
+    return week_entries

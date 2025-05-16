@@ -90,3 +90,52 @@ async def read_users_me(current_user: TokenData = Depends(get_current_user)) -> 
         "username": current_user.username,
         "role": current_user.role
     }
+
+from db import user_db
+
+@router.get("/demo-token/{role}")
+async def get_demo_token(role: Role) -> Token:
+    """
+    Get a demo token with a specific role.
+    For demonstration purposes only.
+
+    Parameters
+    ----------
+    role : Role
+        Role to include in the token
+
+    Returns
+    -------
+    Token
+        JWT token with specified role
+    """
+    # Create a token for the demo user
+    demo_users = user_db.find_by("username", "demo")
+    if not demo_users:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo user not found",
+        )
+
+    demo_user = demo_users[0]
+
+    # Token expires in 5 minutes for demo purposes
+    expires_delta = timedelta(minutes=5)
+
+    token_data = {
+        "user_id": str(demo_user.id),
+        "username": demo_user.username,
+        "role": role.value
+    }
+
+    access_token = create_token(token_data, expires_delta)
+
+    logger.info(f"Created demo token with role {role}")
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=300,  # 5 minutes in seconds
+        user_id=str(demo_user.id),
+        username=demo_user.username,
+        role=role
+    )
