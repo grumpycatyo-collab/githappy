@@ -1,7 +1,5 @@
 """Changelog routes for GitHappy API."""
 
-from uuid import UUID
-from bson import ObjectId
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -9,7 +7,7 @@ from core.auth import TokenData, get_current_user
 from core.logger import logger
 from core.sentiment import enrich_entry
 
-from core.db import changelog_db, tag_db
+from core.db import changelog_db
 from models import ChangelogEntry, ChangelogEntryCreate, ChangelogEntryUpdate, Role, PyObjectId
 from datetime import datetime
 router = APIRouter()

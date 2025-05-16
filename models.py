@@ -2,8 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Union
-from uuid import UUID, uuid4
+from typing import List, Optional
 from bson import ObjectId
 
 from pydantic import BaseModel, Field, GetCoreSchemaHandler, GetJsonSchemaHandler

@@ -2,14 +2,12 @@
 
 from datetime import timedelta
 from typing import Dict
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 
 from core.auth import authenticate_user, create_token, get_current_user, TokenData, get_password_hash
 from core.logger import logger
-from models import Role, Token, TokenRequest, User, PyObjectId, UserCreate
+from models import Role, Token, TokenRequest, User, UserCreate
 
 router = APIRouter()
 

@@ -1,8 +1,6 @@
 """MongoDB database implementation using pymongo."""
 
-import os
 from typing import Dict, List, Optional, Type, TypeVar, Generic, Any
-from uuid import UUID
 
 import pymongo
 from bson import ObjectId

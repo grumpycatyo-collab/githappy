@@ -1,7 +1,7 @@
 """Sentiment analysis service."""
 
 import re
-from typing import List, Tuple
+from typing import List
 
 from models import ChangelogEntry, EntryType, Gitmoji
 

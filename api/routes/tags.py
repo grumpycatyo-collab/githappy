@@ -1,7 +1,6 @@
 """Tag routes for GitHappy API."""
 
 from typing import List
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
