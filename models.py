@@ -1,5 +1,4 @@
-# File: models.py (update)
-"""Core data models for Githappy API."""
+"""Core data models for GitHappy API."""
 
 from datetime import datetime
 from enum import Enum

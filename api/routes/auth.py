@@ -1,5 +1,4 @@
-# File: api/routes/auth.py (update)
-"""Authentication routes for Githappy API."""
+"""Authentication routes for GitHappy API."""
 
 from datetime import timedelta
 from typing import Dict

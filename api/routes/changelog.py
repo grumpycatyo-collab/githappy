@@ -1,4 +1,4 @@
-"""Changelog routes for Githappy API."""
+"""Changelog routes for GitHappy API."""
 
 from uuid import UUID
 

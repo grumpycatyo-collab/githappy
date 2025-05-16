@@ -49,17 +49,14 @@ def analyze_content(entry: ChangelogEntry) -> List[Gitmoji]:
     content = entry.content.lower()
     gitmojis = []
 
-    # Add default gitmoji for the entry type
     default_gitmoji = DEFAULT_GITMOJIS.get(entry.entry_type)
     if default_gitmoji:
         gitmojis.append(default_gitmoji)
 
-    # Check content against patterns
     for gitmoji, pattern in GITMOJI_PATTERNS.items():
         if re.search(pattern, content, re.IGNORECASE) and gitmoji not in gitmojis:
             gitmojis.append(gitmoji)
 
-    # Limit to 3 gitmojis to avoid clutter
     return gitmojis[:3]
 
 

@@ -14,7 +14,6 @@ class Environment(str, Enum):
     PRODUCTION = "production"
 
 
-# TODO: Work on settings and config management (not good for now)
 class Settings(BaseSettings):
     """Application settings."""
 

@@ -1,4 +1,4 @@
-"""Authentication utilities for ReleaseJoy API."""
+"""Authentication utilities for GitHappy API."""
 
 from datetime import datetime, timedelta
 from typing import Dict, Optional

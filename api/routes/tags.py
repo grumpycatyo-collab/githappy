@@ -1,5 +1,4 @@
-# File: api/routes/tags.py
-"""Tag routes for Githappy API."""
+"""Tag routes for GitHappy API."""
 
 from typing import List
 from uuid import UUID
