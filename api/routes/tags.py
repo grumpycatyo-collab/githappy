@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from core.auth import TokenData, get_current_user
 from core.logger import logger
-from db import tag_db
+from core.db import tag_db
 from models import Tag, TagCreate, Role
 
 router = APIRouter()

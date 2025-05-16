@@ -97,7 +97,7 @@ class Tag(BaseModel):
 
 class ChangelogEntry(BaseModel):
     """
-    Changelog entry model.
+    Changelog entry model - similar to a Git commit.
 
     Attributes
     ----------
@@ -105,12 +105,10 @@ class ChangelogEntry(BaseModel):
         Unique identifier
     user_id : UUID
         Owner user ID
-    title : str
-        Entry title
-    entry_type : EntryType
-        Type of entry
     content : str
-        Entry content
+        Entry content (may include prefixed gitmojis)
+    entry_type : EntryType
+        Type of entry (HIGHLIGHT, BUG, REFLECTION)
     mood : Optional[Mood]
         User's mood
     week_number : int
@@ -121,8 +119,6 @@ class ChangelogEntry(BaseModel):
         Sentiment analysis score
     tags : List[UUID]
         List of tag IDs
-    is_public : bool
-        Whether the entry is public
     created_at : datetime
         Creation timestamp
     updated_at : Optional[datetime]
@@ -131,17 +127,29 @@ class ChangelogEntry(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     user_id: UUID
-    title: str
-    entry_type: EntryType
     content: str
+    entry_type: EntryType
     mood: Optional[Mood] = None
     week_number: int
-    gitmojis: list[Gitmoji] = Field(default_factory=list)
+    gitmojis: List[Gitmoji] = Field(default_factory=list)
     sentiment_score: Optional[float] = None
     tags: List[UUID] = Field(default_factory=list)
-    is_public: bool = False
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: Optional[datetime] = None
+
+    def formatted_content(self) -> str:
+        """
+        Get formatted content with gitmojis.
+
+        Returns
+        -------
+        str
+            Formatted content string
+        """
+        gitmoji_prefix = " ".join([gitmoji.value for gitmoji in self.gitmojis])
+        if gitmoji_prefix:
+            return f"{gitmoji_prefix} {self.content}"
+        return self.content
 
 
 class TokenRequest(BaseModel):
@@ -196,9 +204,8 @@ class ChangelogEntryCreate(BaseModel):
 
     Only includes fields that need to be provided by the user.
     """
-    title: str
-    entry_type: EntryType
     content: str
+    entry_type: EntryType
     mood: Optional[Mood] = None
     tags: List[UUID] = Field(default_factory=list)
 
@@ -209,12 +216,10 @@ class ChangelogEntryUpdate(BaseModel):
 
     All fields are optional since users may want to update only specific fields.
     """
-    title: Optional[str] = None
-    entry_type: Optional[EntryType] = None
     content: Optional[str] = None
+    entry_type: Optional[EntryType] = None
     mood: Optional[Mood] = None
     tags: Optional[List[UUID]] = None
-
 
 class TagCreate(BaseModel):
     """

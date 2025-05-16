@@ -91,7 +91,7 @@ async def read_users_me(current_user: TokenData = Depends(get_current_user)) -> 
         "role": current_user.role
     }
 
-from db import user_db
+from core.db import user_db
 
 @router.get("/demo-token/{role}")
 async def get_demo_token(role: Role) -> Token:

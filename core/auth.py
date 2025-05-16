@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from core.config import get_settings
 from core.logger import logger
-from db import user_db
+from core.db import user_db
 from models import Role, User
 
 settings = get_settings()

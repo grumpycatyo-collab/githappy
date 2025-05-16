@@ -46,7 +46,7 @@ def analyze_content(entry: ChangelogEntry) -> List[Gitmoji]:
     List[Gitmoji]
         List of assigned gitmojis
     """
-    content = f"{entry.title} {entry.content}".lower()
+    content = entry.content.lower()
     gitmojis = []
 
     # Add default gitmoji for the entry type
@@ -61,6 +61,7 @@ def analyze_content(entry: ChangelogEntry) -> List[Gitmoji]:
 
     # Limit to 3 gitmojis to avoid clutter
     return gitmojis[:3]
+
 
 # TODO: Replace with actual sentiment analysis API call
 def get_sentiment_score(text: str) -> float:
@@ -119,8 +120,7 @@ def enrich_entry(entry: ChangelogEntry) -> ChangelogEntry:
         Enriched entry
     """
     if entry.sentiment_score is None:
-        combined_text = f"{entry.title} {entry.content}"
-        entry.sentiment_score = get_sentiment_score(combined_text)
+        entry.sentiment_score = get_sentiment_score(entry.content)
 
     if not entry.gitmojis:
         entry.gitmojis = analyze_content(entry)
