@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from core.auth import TokenData, get_current_user
 from core.logger import logger
 from core.db import tag_db
-from models import Tag, TagCreate, Role
+from models import Tag, TagCreate, Role, PyObjectId
 
 router = APIRouter()
 
@@ -37,7 +37,7 @@ async def get_tags(
         List of tags
     """
     # Get all tags for the user
-    user_tags = tag_db.find_by("user_id", UUID(current_user.user_id))
+    user_tags = tag_db.find_by("user_id", PyObjectId(current_user.user_id))
 
     # Apply pagination
     paginated_tags = user_tags[skip : skip + limit]
@@ -79,7 +79,7 @@ async def create_tag(tag_data: TagCreate, current_user: TokenData = Depends(get_
     # Create a new Tag from the provided data
     tag = Tag(
         name=tag_data.name,
-        user_id=UUID(current_user.user_id)
+        user_id=PyObjectId(current_user.user_id)
     )
 
     # Create the tag
@@ -90,13 +90,13 @@ async def create_tag(tag_data: TagCreate, current_user: TokenData = Depends(get_
 
 
 @router.delete("/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_tag(tag_id: UUID, current_user: TokenData = Depends(get_current_user)):
+async def delete_tag(tag_id: str, current_user: TokenData = Depends(get_current_user)):
     """
     Delete a tag.
 
     Parameters
     ----------
-    tag_id : UUID
+    tag_id : str
         Tag ID
     current_user : TokenData
         Current authenticated user
@@ -108,7 +108,8 @@ async def delete_tag(tag_id: UUID, current_user: TokenData = Depends(get_current
         403 if user doesn't have permission
     """
     # Check if tag exists
-    existing_tag = tag_db.get(tag_id)
+    tag_id_obj = PyObjectId(tag_id)
+    existing_tag = tag_db.get(tag_id_obj)
     if not existing_tag:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -123,7 +124,7 @@ async def delete_tag(tag_id: UUID, current_user: TokenData = Depends(get_current
         )
 
     # Delete the tag
-    success = tag_db.delete(tag_id)
+    success = tag_db.delete(tag_id_obj)
 
     if not success:
         raise HTTPException(

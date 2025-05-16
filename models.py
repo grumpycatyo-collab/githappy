@@ -4,8 +4,34 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional, Union
 from uuid import UUID, uuid4
+from bson import ObjectId
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, GetCoreSchemaHandler, GetJsonSchemaHandler
+from pydantic_core import core_schema
+
+
+class PyObjectId(ObjectId):
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source, handler: GetCoreSchemaHandler):
+        return core_schema.json_or_python_schema(
+            python_schema=core_schema.with_info_plain_validator_function(cls.validate),
+            json_schema=core_schema.str_schema(),
+            serialization=core_schema.plain_serializer_function_ser_schema(str),
+        )
+
+    @classmethod
+    def validate(cls, v, _info=None):
+        if isinstance(v, ObjectId):
+            return v
+        if not ObjectId.is_valid(v):
+            raise ValueError("Invalid ObjectId")
+        return ObjectId(v)
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, core_schema, handler: GetJsonSchemaHandler):
+        schema = handler(core_schema)
+        schema.update(type="string")
+        return schema
 
 
 class Role(str, Enum):
@@ -62,7 +88,7 @@ class User(BaseModel):
 
     Attributes
     ----------
-    id : UUID
+    id : PyObjectId
         Unique identifier
     username : str
         Username
@@ -70,7 +96,7 @@ class User(BaseModel):
         Hashed password
     """
 
-    id: UUID = Field(default_factory=uuid4)
+    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
     username: str
     password_hash: str
 
@@ -81,17 +107,17 @@ class Tag(BaseModel):
 
     Attributes
     ----------
-    id : UUID
+    id : PyObjectId
         Unique identifier
     name : str
         Tag name
-    user_id : UUID
+    user_id : PyObjectId
         Owner user ID
     """
 
-    id: UUID = Field(default_factory=uuid4)
+    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
     name: str
-    user_id: UUID
+    user_id: PyObjectId
 
 
 class ChangelogEntry(BaseModel):
@@ -100,9 +126,9 @@ class ChangelogEntry(BaseModel):
 
     Attributes
     ----------
-    id : UUID
+    id : PyObjectId
         Unique identifier
-    user_id : UUID
+    user_id : PyObjectId
         Owner user ID
     content : str
         Entry content (may include prefixed gitmojis)
@@ -116,7 +142,7 @@ class ChangelogEntry(BaseModel):
         List of gitmojis assigned to the entry
     sentiment_score : Optional[float]
         Sentiment analysis score
-    tags : List[UUID]
+    tags : List[PyObjectId]
         List of tag IDs
     created_at : datetime
         Creation timestamp
@@ -124,15 +150,15 @@ class ChangelogEntry(BaseModel):
         Last update timestamp
     """
 
-    id: UUID = Field(default_factory=uuid4)
-    user_id: UUID
+    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
+    user_id: PyObjectId
     content: str
     entry_type: EntryType
     mood: Optional[Mood] = None
     week_number: int
     gitmojis: List[Gitmoji] = Field(default_factory=list)
     sentiment_score: Optional[float] = None
-    tags: List[UUID] = Field(default_factory=list)
+    tags: List[PyObjectId] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: Optional[datetime] = None
 
@@ -206,7 +232,7 @@ class ChangelogEntryCreate(BaseModel):
     content: str
     entry_type: EntryType
     mood: Optional[Mood] = None
-    tags: List[UUID] = Field(default_factory=list)
+    tags: List[PyObjectId] = Field(default_factory=list)
 
 
 class ChangelogEntryUpdate(BaseModel):
@@ -218,7 +244,7 @@ class ChangelogEntryUpdate(BaseModel):
     content: Optional[str] = None
     entry_type: Optional[EntryType] = None
     mood: Optional[Mood] = None
-    tags: Optional[List[UUID]] = None
+    tags: Optional[List[PyObjectId]] = None
 
 class TagCreate(BaseModel):
     """
@@ -227,3 +253,7 @@ class TagCreate(BaseModel):
     Only includes fields that need to be provided by the user.
     """
     name: str
+
+class UserCreate(BaseModel):
+    username: str
+    password: str

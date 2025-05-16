@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from core.config import get_settings
 from core.logger import logger
+from models import PyObjectId
 
 settings = get_settings()
 
@@ -62,56 +63,37 @@ class MongoDB(Generic[T]):
     
     def _convert_id(self, item: Dict) -> Dict:
         """
-        Convert MongoDB ObjectId to string ID.
-        
-        Parameters
-        ----------
-        item : Dict
-            MongoDB document
-            
-        Returns
-        -------
-        Dict
-            Document with converted ID
+        Convert MongoDB ObjectId to string ID for Pydantic.
         """
+        if item is None:
+            return item
         if "_id" in item:
             item["id"] = str(item["_id"])
-            del item["_id"]
         return item
     
     def _prepare_for_mongo(self, item: T) -> Dict:
         """
-        Prepare item for MongoDB storage.
-        
-        Parameters
-        ----------
-        item : T
-            Item to prepare
-            
-        Returns
-        -------
-        Dict
-            Prepared document
+        Prepare item for MongoDB storage, converting id to _id and handling ObjectIds.
         """
-        # Convert model to dict
-        data = item.model_dump()
-        
-        # Handle UUID fields
+        data = item.model_dump(by_alias=True, exclude_none=True)
+        # Convert id to _id for MongoDB
+        if "id" in data:
+            data["_id"] = data.pop("id")
+        # Convert all PyObjectId fields to ObjectId
         for key, value in data.items():
-            if isinstance(value, UUID):
-                data[key] = str(value)
-            elif isinstance(value, list) and all(isinstance(x, UUID) for x in value):
-                data[key] = [str(x) for x in value]
-        
+            if isinstance(value, PyObjectId):
+                data[key] = ObjectId(str(value))
+            elif isinstance(value, list) and value and isinstance(value[0], PyObjectId):
+                data[key] = [ObjectId(str(x)) for x in value]
         return data
     
-    def get(self, id: UUID) -> Optional[T]:
+    def get(self, id: PyObjectId) -> Optional[T]:
         """
         Get an item by ID.
 
         Parameters
         ----------
-        id : UUID
+        id : PyObjectId
             Item ID
 
         Returns
@@ -119,7 +101,7 @@ class MongoDB(Generic[T]):
         Optional[T]
             Found item or None
         """
-        result = self.collection.find_one({"id": str(id)})
+        result = self.collection.find_one({"_id": ObjectId(str(id))})
         if result:
             result = self._convert_id(result)
             return self.model_class.model_validate(result)
@@ -140,17 +122,17 @@ class MongoDB(Generic[T]):
             Created item
         """
         data = self._prepare_for_mongo(item)
-        self.collection.insert_one(data)
-        logger.debug(f"Created {self._name} with ID {item.id}")
+        result = self.collection.insert_one(data)
+        item.id = result.inserted_id
         return item
     
-    def update(self, id: UUID, item: T) -> Optional[T]:
+    def update(self, id: PyObjectId, item: T) -> Optional[T]:
         """
         Update an existing item.
 
         Parameters
         ----------
-        id : UUID
+        id : PyObjectId
             Item ID
         item : T
             Updated item
@@ -161,20 +143,19 @@ class MongoDB(Generic[T]):
             Updated item or None if not found
         """
         data = self._prepare_for_mongo(item)
-        result = self.collection.update_one({"id": str(id)}, {"$set": data})
+        result = self.collection.update_one({"_id": ObjectId(str(id))}, {"$set": data})
         
         if result.matched_count > 0:
-            logger.debug(f"Updated {self._name} with ID {id}")
             return item
         return None
     
-    def delete(self, id: UUID) -> bool:
+    def delete(self, id: PyObjectId) -> bool:
         """
         Delete an item by ID.
 
         Parameters
         ----------
-        id : UUID
+        id : PyObjectId
             Item ID
 
         Returns
@@ -182,11 +163,8 @@ class MongoDB(Generic[T]):
         bool
             True if deleted, False if not found
         """
-        result = self.collection.delete_one({"id": str(id)})
-        if result.deleted_count > 0:
-            logger.debug(f"Deleted {self._name} with ID {id}")
-            return True
-        return False
+        result = self.collection.delete_one({"_id": ObjectId(str(id))})
+        return result.deleted_count > 0
     
     def list_all(self) -> List[T]:
         """
@@ -217,9 +195,9 @@ class MongoDB(Generic[T]):
         List[T]
             List of matching items
         """
-        # Handle UUID values
-        if isinstance(value, UUID):
-            value = str(value)
+        # Convert PyObjectId to ObjectId for queries
+        if isinstance(value, PyObjectId):
+            value = ObjectId(str(value))
         
         results = self.collection.find({field: value})
         items = [self.model_class.model_validate(self._convert_id(item)) for item in results]

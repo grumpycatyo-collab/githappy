@@ -1,6 +1,7 @@
 """Changelog routes for GitHappy API."""
 
 from uuid import UUID
+from bson import ObjectId
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -9,7 +10,7 @@ from core.logger import logger
 from core.sentiment import enrich_entry
 
 from core.db import changelog_db, tag_db
-from models import ChangelogEntry, ChangelogEntryCreate, ChangelogEntryUpdate, Role
+from models import ChangelogEntry, ChangelogEntryCreate, ChangelogEntryUpdate, Role, PyObjectId
 from datetime import datetime
 router = APIRouter()
 
@@ -37,7 +38,7 @@ async def get_changelog_entries(
     list[ChangelogEntry]
         list of changelog entries
     """
-    user_entries = changelog_db.find_by("user_id", UUID(current_user.user_id))
+    user_entries = changelog_db.find_by("user_id", PyObjectId(current_user.user_id))
 
     paginated_entries = user_entries[skip : skip + limit]
 
@@ -47,7 +48,7 @@ async def get_changelog_entries(
 
 @router.get("/{entry_id}", response_model=ChangelogEntry)
 async def get_changelog_entry(
-        entry_id: UUID, current_user: TokenData = Depends(get_current_user)
+        entry_id: str, current_user: TokenData = Depends(get_current_user)
 ):
     """
     Get a specific changelog entry.
@@ -70,7 +71,8 @@ async def get_changelog_entry(
         404 if entry not found
         403 if user doesn't have permission
     """
-    entry = changelog_db.get(entry_id)
+    entry_id_obj = PyObjectId(entry_id)
+    entry = changelog_db.get(entry_id_obj)
 
     if not entry:
         raise HTTPException(
@@ -120,7 +122,7 @@ async def create_changelog_entry(
 
     # Create a new ChangelogEntry from the provided data
     entry = ChangelogEntry(
-        user_id=UUID(current_user.user_id),
+        user_id=PyObjectId(current_user.user_id),
         content=entry_data.content,
         entry_type=entry_data.entry_type,
         mood=entry_data.mood,
@@ -139,7 +141,7 @@ async def create_changelog_entry(
 
 @router.put("/{entry_id}", response_model=ChangelogEntry)
 async def update_changelog_entry(
-        entry_id: UUID,
+        entry_id: str,
         entry_data: ChangelogEntryUpdate,
         current_user: TokenData = Depends(get_current_user),
 ):
@@ -148,7 +150,7 @@ async def update_changelog_entry(
 
     Parameters
     ----------
-    entry_id : UUID
+    entry_id : str
         Entry ID
     entry_data : ChangelogEntryUpdate
         Updated data
@@ -166,8 +168,9 @@ async def update_changelog_entry(
         404 if entry not found
         403 if user doesn't have permission
     """
+    entry_id_obj = PyObjectId(entry_id)
     # Check if entry exists
-    existing_entry = changelog_db.get(entry_id)
+    existing_entry = changelog_db.get(entry_id_obj)
     if not existing_entry:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -204,7 +207,7 @@ async def update_changelog_entry(
         updated_entry = enrich_entry(updated_entry)
 
     # Update the entry
-    result = changelog_db.update(entry_id, updated_entry)
+    result = changelog_db.update(entry_id_obj, updated_entry)
 
     if not result:
         raise HTTPException(
@@ -218,7 +221,7 @@ async def update_changelog_entry(
 
 @router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_changelog_entry(
-        entry_id: UUID, current_user: TokenData = Depends(get_current_user)
+        entry_id: str, current_user: TokenData = Depends(get_current_user)
 ):
     """
     Delete a changelog entry.
@@ -236,7 +239,8 @@ async def delete_changelog_entry(
         404 if entry not found
         403 if user doesn't have permission
     """
-    existing_entry = changelog_db.get(entry_id)
+    entry_id_obj = PyObjectId(entry_id)
+    existing_entry = changelog_db.get(entry_id_obj)
     if not existing_entry:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -249,7 +253,7 @@ async def delete_changelog_entry(
             detail="You don't have permission to delete this entry",
         )
 
-    success = changelog_db.delete(entry_id)
+    success = changelog_db.delete(entry_id_obj)
 
     if not success:
         raise HTTPException(
@@ -284,7 +288,7 @@ async def get_entries_by_week(
         List of changelog entries for the week
     """
     # Get all entries for the user
-    user_entries = changelog_db.find_by("user_id", UUID(current_user.user_id))
+    user_entries = changelog_db.find_by("user_id", PyObjectId(current_user.user_id))
 
     # Filter entries by week number
     week_entries = [entry for entry in user_entries if entry.week_number == week_number]
@@ -294,14 +298,14 @@ async def get_entries_by_week(
 
 @router.get("/{entry_id}/formatted", response_model=dict)
 async def get_formatted_entry(
-        entry_id: UUID, current_user: TokenData = Depends(get_current_user)
+        entry_id: str, current_user: TokenData = Depends(get_current_user)
 ):
     """
     Get formatted content of an entry.
 
     Parameters
     ----------
-    entry_id : UUID
+    entry_id : str
         Entry ID
     current_user : TokenData
         Current authenticated user
@@ -317,7 +321,8 @@ async def get_formatted_entry(
         404 if entry not found
         403 if user doesn't have permission
     """
-    entry = changelog_db.get(entry_id)
+    entry_id_obj = PyObjectId(entry_id)
+    entry = changelog_db.get(entry_id_obj)
 
     if not entry:
         raise HTTPException(

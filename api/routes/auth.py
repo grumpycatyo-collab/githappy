@@ -7,9 +7,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from core.auth import authenticate_user, create_token, get_current_user, TokenData
+from core.auth import authenticate_user, create_token, get_current_user, TokenData, get_password_hash
 from core.logger import logger
-from models import Role, Token, TokenRequest, User
+from models import Role, Token, TokenRequest, User, PyObjectId, UserCreate
 
 router = APIRouter()
 
@@ -138,3 +138,18 @@ async def get_demo_token(role: Role) -> Token:
         username=demo_user.username,
         role=role
     )
+
+@router.post("/register", response_model=User, status_code=status.HTTP_201_CREATED)
+async def register_user(user_data: UserCreate):
+    # Check if username already exists
+    existing_users = user_db.find_by("username", user_data.username)
+    if existing_users:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already exists",
+        )
+    hashed_password = get_password_hash(user_data.password)
+    user = User(username=user_data.username, password_hash=hashed_password)
+    created_user = user_db.create(user)
+
+    return User(id=created_user.id, username=created_user.username, password_hash="********")  # Don't return the password hash

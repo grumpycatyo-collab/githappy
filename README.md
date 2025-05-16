@@ -29,30 +29,40 @@ GitHappy lets you track your life like a software project, with personal changel
 When you want to record your day:
 
 ```bash
-curl -X POST "http://localhost:8000/api/changelog/" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
+curl -X 'POST' \
+  'http://0.0.0.0:8000/api/changelog/' \
+  -H 'accept: application/json' \
+  -H 'Authorization: Bearer YOUR BEARER' \
+  -H 'Content-Type: application/json' \
   -d '{
-    "content": "I had a bad day today, however I learnt a lot, so I am gonna continue and be better tomorrow",
-    "entry_type": "REFLECTION",
-    "mood": "NEUTRAL",
-    "tags": ["f47ac10b-58cc-4372-a567-0e02b2c3d479"]
-  }'
+  "content": "I had a bad day today, however I learnt a lot, so I am gonna continue and be better tomorrow",
+  "entry_type": "HIGHLIGHT",
+  "mood": "HAPPY",
+  "tags": [
+    "6827b84a5d986a02e321c33c"
+  ]
+}'
 ```
 
 ### Response
 ```json
 {
-  "id": "6c84fb90-12c4-11e1-840d-7b25c5ee775a",
-  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "_id": "6827b8ca5d986a02e321c33d",
+  "user_id": "6827b7d15d986a02e321c33a",
   "content": "I had a bad day today, however I learnt a lot, so I am gonna continue and be better tomorrow",
-  "entry_type": "REFLECTION",
-  "mood": "NEUTRAL",
-  "week_number": 32,
-  "gitmojis": ["📝", "💡", "⚡"],
-  "sentiment_score": 0.25,
-  "tags": ["f47ac10b-58cc-4372-a567-0e02b2c3d479"],
-  "created_at": "2023-08-10T14:30:45.123Z",
+  "entry_type": "HIGHLIGHT",
+  "mood": "HAPPY",
+  "week_number": 20,
+  "gitmojis": [
+    "✨",
+    "🚀",
+    "🧠"
+  ],
+  "sentiment_score": -1,
+  "tags": [
+    "6827b84a5d986a02e321c33c"
+  ],
+  "created_at": "2025-05-17T01:14:34.482986",
   "updated_at": null
 }
 ```
