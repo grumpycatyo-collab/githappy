@@ -8,7 +8,7 @@ from core.auth import TokenData, get_current_user
 from core.logger import logger
 from core.sentiment import enrich_entry
 
-from db import changelog_db, tag_db
+from core.db import changelog_db, tag_db
 from models import ChangelogEntry, ChangelogEntryCreate, ChangelogEntryUpdate, Role
 from datetime import datetime
 router = APIRouter()
@@ -111,24 +111,26 @@ async def create_changelog_entry(
     HTTPException
         403 if user doesn't have permission
     """
+    # Check if user has write permission
     if current_user.role == Role.VISITOR:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have permission to create entries",
         )
 
+    # Create a new ChangelogEntry from the provided data
     entry = ChangelogEntry(
         user_id=UUID(current_user.user_id),
-        title=entry_data.title,
-        entry_type=entry_data.entry_type,
         content=entry_data.content,
+        entry_type=entry_data.entry_type,
         mood=entry_data.mood,
         tags=entry_data.tags,
-        week_number=datetime.now().isocalendar()[1],
+        week_number=datetime.now().isocalendar()[1],  # Current ISO week number
     )
 
     entry = enrich_entry(entry)
 
+    # Create the entry
     created_entry = changelog_db.create(entry)
     logger.info(f"Created changelog entry with ID {created_entry.id}")
 
@@ -197,8 +199,8 @@ async def update_changelog_entry(
     updated_entry = ChangelogEntry(**updated_data)
     updated_entry.updated_at = datetime.now()
 
-    # Re-analyze sentiment and gitmojis if content or title was updated
-    if "content" in update_data or "title" in update_data:
+    # Re-analyze sentiment and gitmojis if content was updated
+    if "content" in update_data:
         updated_entry = enrich_entry(updated_entry)
 
     # Update the entry
@@ -289,3 +291,51 @@ async def get_entries_by_week(
 
     logger.info(f"Retrieved {len(week_entries)} changelog entries for week {week_number}")
     return week_entries
+
+@router.get("/{entry_id}/formatted", response_model=dict)
+async def get_formatted_entry(
+        entry_id: UUID, current_user: TokenData = Depends(get_current_user)
+):
+    """
+    Get formatted content of an entry.
+
+    Parameters
+    ----------
+    entry_id : UUID
+        Entry ID
+    current_user : TokenData
+        Current authenticated user
+
+    Returns
+    -------
+    dict
+        Formatted entry content
+
+    Raises
+    ------
+    HTTPException
+        404 if entry not found
+        403 if user doesn't have permission
+    """
+    entry = changelog_db.get(entry_id)
+
+    if not entry:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entry not found",
+        )
+
+    if str(entry.user_id) != current_user.user_id and current_user.role != Role.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to access this entry",
+        )
+
+    return {
+        "id": str(entry.id),
+        "formatted_content": entry.formatted_content(),
+        "entry_type": entry.entry_type,
+        "gitmojis": [gitmoji.value for gitmoji in entry.gitmojis],
+        "sentiment_score": entry.sentiment_score,
+        "created_at": entry.created_at
+    }
