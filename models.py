@@ -8,6 +8,8 @@ from bson import ObjectId
 from pydantic import BaseModel, Field, GetCoreSchemaHandler, GetJsonSchemaHandler
 from pydantic_core import core_schema
 
+from rich.prompt import Prompt
+
 
 class PyObjectId(ObjectId):
     @classmethod

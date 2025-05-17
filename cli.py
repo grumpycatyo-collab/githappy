@@ -3,7 +3,8 @@ from core.auth import get_token_data
 from core.logger import logger
 from core.db import user_db, changelog_db, tag_db
 from core.utils import save_token, load_token
-from models import PyObjectId
+from core.sentiment import enrich_entry
+from models import PyObjectId, ChangelogEntry, EntryType, Mood, Tag
 from bson import ObjectId
 from rich.text import Text
 from rich.console import Console
@@ -11,6 +12,7 @@ from rich.align import Align
 from rich.padding import Padding
 from rich import print
 from typing import Optional
+from datetime import datetime
 
 app = typer.Typer()
 console = Console()
@@ -215,6 +217,92 @@ def log(
                 console.print(row)
                 console.print("─" * total_width)
 
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {str(e)}")
+
+
+@app.command()
+def write() -> None:
+    """
+    Write a new changelog entry.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
+    token = load_token()
+    if not token:
+        console.print("[bold red]No token found. Please authenticate first.[/bold red]")
+        return
+
+    try:
+        token_data = get_token_data(token)
+        user_id = token_data.user_id
+
+        content = typer.prompt("What's on your mind?")
+
+        console.print("\nEntry types:")
+        for i, entry_type in enumerate(EntryType):
+            console.print(f"  {i + 1}. {entry_type.value}")
+
+        entry_type_idx = typer.prompt("Select entry type (number)", default="1")
+        try:
+            entry_type = list(EntryType)[int(entry_type_idx) - 1]
+        except (ValueError, IndexError):
+            entry_type = EntryType.HIGHLIGHT
+            console.print(
+                f"[yellow]Invalid selection, using default: {entry_type.value}[/yellow]"
+            )
+
+        # Display mood options
+        console.print("\nMoods:")
+        for i, mood in enumerate(Mood):
+            console.print(f"  {i + 1}. {mood.value}")
+
+        # Get mood selection
+        mood_idx = typer.prompt("Select mood (number)", default="1")
+        try:
+            mood = list(Mood)[int(mood_idx) - 1]
+        except (ValueError, IndexError):
+            mood = Mood.NEUTRAL
+            console.print(
+                f"[yellow]Invalid selection, using default: {mood.value}[/yellow]"
+            )
+
+        tag_input = typer.prompt("Enter tags (comma-separated)", default="")
+
+        tag_names = [t.strip() for t in tag_input.split(",") if t.strip()]
+        tag_ids = []
+
+        for tag_name in tag_names:
+            existing_tags = tag_db.find_by("name", tag_name)
+            existing_tags = [t for t in existing_tags if str(t.user_id) == user_id]
+
+            if existing_tags:
+                tag_ids.append(existing_tags[0].id)
+            elif tag_name:
+                new_tag = tag_db.create(Tag(name=tag_name, user_id=PyObjectId(user_id)))
+                tag_ids.append(new_tag.id)
+                console.print(f"[green]Created new tag:[/green] {tag_name}")
+
+        entry = ChangelogEntry(
+            user_id=PyObjectId(user_id),
+            content=content,
+            entry_type=entry_type,
+            mood=mood,
+            tags=tag_ids,
+            week_number=datetime.now().isocalendar()[1],
+        )
+
+        entry = enrich_entry(entry)
+
+        created_entry = changelog_db.create(entry)
+
+        console.print("\n[bold green]✅ Entry created successfully![/bold green]")
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {str(e)}")
 

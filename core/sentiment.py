@@ -130,7 +130,7 @@ def get_sentiment_score(text: str) -> float:
         Sentiment score between -1 (negative) and 1 (positive)
     """
 
-    nltk.download("vader_lexicon")
+    nltk.download("vader_lexicon", quiet=True)
     from nltk.sentiment.vader import SentimentIntensityAnalyzer
 
     analyzer = SentimentIntensityAnalyzer()
