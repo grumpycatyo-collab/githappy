@@ -119,7 +119,33 @@ def log(
 
             print(json.dumps(user_entries, cls=CustomEncoder, indent=2))
         else:
-            content_width = 70
+            max_message_width = 0
+            for entry in user_entries:
+                gitmojis_str = (
+                    " ".join([emoji.value for emoji in entry.gitmojis])
+                    if entry.gitmojis
+                    else ""
+                )
+                content_with_emoji = (
+                    f"{gitmojis_str} {entry.content}" if gitmojis_str else entry.content
+                )
+
+                tag_names = [
+                    tag_db.get(tag_id).name
+                    for tag_id in entry.tags
+                    if tag_db.get(tag_id)
+                ]
+                tags_str = ", ".join(tag_names) if tag_names else "no tags"
+
+                date_str = entry.created_at.strftime("%Y-%m-%d %H:%M")
+
+                max_message_width = max(
+                    max_message_width,
+                    len(content_with_emoji),
+                    len(tags_str),
+                    len(date_str),
+                )
+
             for entry in user_entries:
                 date_str = entry.created_at.strftime("%Y-%m-%d %H:%M")
 
@@ -139,7 +165,7 @@ def log(
 
                 message = Text()
 
-                message.append(f"{tags_str}\n", style="dim")
+                message.append(f"{tags_str:<{max_message_width}}\n", style="dim")
 
                 content_part = Text()
                 if gitmojis_str:
@@ -154,11 +180,11 @@ def log(
 
                 message.append(content_part)
 
-                message.append(f"\n{date_str}", style="dim")
+                message.append(f"\n{date_str:<{max_message_width}}", style="dim")
 
                 console.print(message)
 
-                console.print("─" * 100)
+                console.print("─" * max_message_width)
 
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {str(e)}")
