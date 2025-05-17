@@ -11,3 +11,4 @@ cachetools~=5.3.3
 pymongo[srv]
 typer
 rich
+nltk~=3.9.1
