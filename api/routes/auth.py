@@ -44,26 +44,22 @@ async def login_for_access_token(form_data: TokenRequest) -> Token:
     # Token expires in 1 minute for demo purposes
     expires_delta = timedelta(minutes=1)
 
-    # For demo purposes, allow requesting a specific role
-    # In a real application, roles would be stored in the user database
-    role = form_data.requested_role if form_data.requested_role else Role.USER
-
     token_data = {
         "user_id": str(user.id),
         "username": user.username,
-        "role": role.value
+        "role": Role.USER
     }
 
     access_token = create_token(token_data, expires_delta)
 
-    logger.info(f"User {form_data.username} logged in with role {role}")
+    logger.info(f"User {form_data.username} logged in with role {Role.USER}")
     return Token(
         access_token=access_token,
         token_type="bearer",
         expires_in=60,  # 1 minute in seconds
         user_id=str(user.id),
         username=user.username,
-        role=role
+        role=Role.USER
     )
 
 
@@ -88,52 +84,55 @@ async def read_users_me(current_user: TokenData = Depends(get_current_user)) -> 
         "role": current_user.role
     }
 
-from core.db import user_db
-
-@router.get("/demo-token/{role}")
-async def get_demo_token(role: Role) -> Token:
+@router.post("/issue_cli_token", response_model=Token)
+async def issue_cli_token(form_data: TokenRequest) -> Token:
     """
-    Get a demo token with a specific role.
-    For demonstration purposes only.
+    Issue a long-term (24 days) CLI Bearer token for the user.
 
     Parameters
     ----------
-    role : Role
-        Role to include in the token
+    form_data : TokenRequest
+        Authentication data
 
     Returns
     -------
     Token
-        JWT token with specified role
+        JWT token and user info
+
+    Raises
+    ------
+    HTTPException
+        401 error if authentication fails
     """
-    # Create a token for the demo user
-    demo_users = user_db.find_by("username", "demo")
-    if not demo_users:
+    user = authenticate_user(form_data.username, form_data.password)
+    if not user:
+        logger.warning(f"Failed login attempt for user: {form_data.username}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Demo user not found",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    demo_user = demo_users[0]
 
-    # Token expires in 5 minutes for demo purposes
-    expires_delta = timedelta(minutes=5)
+    expires_delta = timedelta(days=24)  # Long-term token for CLI usage
+
+    role = Role.USER
 
     token_data = {
-        "user_id": str(demo_user.id),
-        "username": demo_user.username,
+        "user_id": str(user.id),
+        "username": user.username,
         "role": role.value
     }
 
     access_token = create_token(token_data, expires_delta)
 
-    logger.info(f"Created demo token with role {role}")
+    logger.info(f"User {form_data.username} logged in with role {role}")
     return Token(
         access_token=access_token,
         token_type="bearer",
-        expires_in=300,  # 5 minutes in seconds
-        user_id=str(demo_user.id),
-        username=demo_user.username,
+        expires_in=60*60*24,  # 24 days in seconds
+        user_id=str(user.id),
+        username=user.username,
         role=role
     )
 

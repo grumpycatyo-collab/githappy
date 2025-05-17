@@ -74,7 +74,7 @@ GitHappy automatically:
 * Organizes by week for easy retrospectives
 
 
-## Getting Formatted Entry
+### Getting Formatted Entry
 
 See how your entry looks with gitmojis:
 
@@ -83,6 +83,64 @@ curl -X GET "http://localhost:8000/api/changelog/6c84fb90-12c4-11e1-840d-7b25c5e
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
+## CLI (WIP) via Typer
+Yes, there is a CLI! You can use it to manage your changelog entries directly from the command line. 
+
+```bash
+python3 cli.py --help
+
+Usage: cli.py [OPTIONS] COMMAND [ARGS]...                                                                                       
+                                                                                                                                 
+╭─ Options ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --install-completion          Install completion for the current shell.                                                       │
+│ --show-completion             Show completion for the current shell, to copy it or customize the installation.                │
+│ --help                        Show this message and exit.                                                                     │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ auth   Authenticate a user with a bearer token.                                                                               │
+│ log    Get the changelog entries for the current user. Works like "git log".                                                  │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+Use the `auth` command to paste your bearer token and authenticate with the API.
+```bash
+python3 cli.py auth --bearer YOUR_TOKEN
+✅ Authentication successful
+User: grumpycatyo_collab | Role: WRITER
+```
+
+Then you can start playing with the `log` command to get your changelog entries:
+```bash
+python3 cli.py log --help
+                                                                                                                                 
+Usage: cli.py log [OPTIONS]                                                                                                     
+                                                                                                                                 
+ Get the changelog entries for the current user. Works like "git log".                                                           
+ Parameters ---------- json : bool, optional     Whether to output in JSON format (default is False) tags : list[str], optional  
+ Filter by tag names limit : int, optional     Limit number of entries to show (default is 10) Returns ------- None              
+                                                                                                                                 
+╭─ Options ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --json       --no-json             [default: no-json]                                                                         │
+│ --tag    -t               TEXT     Filter by tag names [default: None]                                                        │
+│ --limit  -l               INTEGER  Limit number of entries to show [default: 10]                                              │
+│ --help                             Show this message and exit.                                                                │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+So if we do:
+```bash
+python3 cli.py log --tag life --limit 2 
+
+life                                                                                              
+📝 ❤️ Feeling better that yesterday but still depressed, I should keep going
+2025-05-17 18:33                                                                                  
+──────────────────────────────────────────────────────────────────────────────────────────────────
+life                                                                                              
+✨ 🚀 🧠 I had a bad day today, however I learnt a lot, so I am gonna continue and be better tomorrow
+2025-05-17 01:14                                                                                  
+──────────────────────────────────────────────────────────────────────────────────────────────────
+
+```
 ## Requirements
 
 * Python 3.11

@@ -22,9 +22,12 @@ class PyObjectId(ObjectId):
     def validate(cls, v, _info=None):
         if isinstance(v, ObjectId):
             return v
-        if not ObjectId.is_valid(v):
-            raise ValueError("Invalid ObjectId")
-        return ObjectId(v)
+        if isinstance(v, str):
+            try:
+                return ObjectId(v)
+            except:
+                raise ValueError(f"Invalid ObjectId: {v}")
+        raise ValueError(f"Invalid ObjectId: {v}")
 
     @classmethod
     def __get_pydantic_json_schema__(cls, core_schema, handler: GetJsonSchemaHandler):
@@ -192,7 +195,6 @@ class TokenRequest(BaseModel):
 
     username: str
     password: str
-    requested_role: Optional[Role] = None
 
 
 class Token(BaseModel):

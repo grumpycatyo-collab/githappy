@@ -180,3 +180,54 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+def get_token_data(token: str) -> TokenData:
+    """
+    Get token data from JWT token.
+
+    Parameters
+    ----------
+    token : str
+        JWT token
+
+    Returns
+    -------
+    TokenData
+        Token data with user info
+
+    Raises
+    ------
+    HTTPException
+        401 error if token is invalid
+    """
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
+        user_id = payload.get("user_id")
+        username = payload.get("username")
+        role = payload.get("role", Role.USER.value)
+
+        if user_id is None or username is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token content",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        return TokenData(
+            user_id=user_id,
+            role=Role(role),
+            username=username
+        )
+    except jwt.ExpiredSignatureError:
+        logger.warning("Token expired")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.PyJWTError as e:
+        logger.error(f"JWT decode error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )

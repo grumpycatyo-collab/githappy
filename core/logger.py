@@ -47,6 +47,8 @@ def configure_logger():
             serialize=True,
             enqueue=True,
         )
+    if settings.api_env.value == "cli":
+        logger.remove()
 
     logger.info(f"Logger configured with level {settings.log_level}")
     return logger
