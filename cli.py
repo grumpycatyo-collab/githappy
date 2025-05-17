@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.align import Align
 from rich.padding import Padding
 from rich import print
+from typing import Optional
 
 app = typer.Typer()
 console = Console()
@@ -44,7 +45,15 @@ def auth(bearer: str = None) -> None:
 
 
 @app.command()
-def log(json: bool = False) -> None:
+def log(
+    json: bool = False,
+    tags: Optional[list[str]] = typer.Option(
+        None, "--tag", "-t", help="Filter by tag names"
+    ),
+    limit: int = typer.Option(
+        30, "--limit", "-l", help="Limit number of entries to show"
+    ),
+) -> None:
     """
     Get the changelog entries for the current user. Works like "git log".
 
@@ -52,7 +61,10 @@ def log(json: bool = False) -> None:
     ----------
     json : bool, optional
         Whether to output in JSON format (default is False)
-
+    tags : list[str], optional
+        Filter by tag names
+    limit : int, optional
+        Limit number of entries to show (default is 30)
     Returns
     -------
     None
@@ -73,6 +85,24 @@ def log(json: bool = False) -> None:
             console.print("[yellow]No changelog entries found.[/yellow]")
             return
 
+
+        if tags:
+            tag_ids = []
+            for tag_name in tags:
+                tag_entries = list(tag_db.find_by("name", tag_name))
+                if tag_entries:
+                    tag_ids.append(tag_entries[0].id)
+
+            if tag_ids:
+                user_entries = [
+                    entry
+                    for entry in user_entries
+                    if any(tag_id in entry.tags for tag_id in tag_ids)
+                ]
+
+        if limit:
+            user_entries = user_entries[:limit]
+
         if json:
             import json
             from datetime import datetime
@@ -90,7 +120,6 @@ def log(json: bool = False) -> None:
             print(json.dumps(user_entries, cls=CustomEncoder, indent=2))
         else:
             content_width = 70
-
             for entry in user_entries:
                 date_str = entry.created_at.strftime("%Y-%m-%d %H:%M")
 
