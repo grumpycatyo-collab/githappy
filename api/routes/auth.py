@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from core.auth import authenticate_user, create_token, get_current_user, TokenData, get_password_hash
 from core.logger import logger
 from models import Role, Token, TokenRequest, User, UserCreate
+from core.db import user_db
 
 router = APIRouter()
 
