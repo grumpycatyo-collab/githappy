@@ -3,7 +3,8 @@ from core.auth import get_token_data
 from core.logger import logger
 from core.db import user_db, changelog_db, tag_db
 from core.utils import save_token, load_token
-from models import PyObjectId
+from core.sentiment import enrich_entry
+from models import PyObjectId, ChangelogEntry, EntryType, Mood, Tag
 from bson import ObjectId
 from rich.text import Text
 from rich.console import Console
@@ -11,6 +12,7 @@ from rich.align import Align
 from rich.padding import Padding
 from rich import print
 from typing import Optional
+from datetime import datetime
 
 app = typer.Typer()
 console = Console()
@@ -88,104 +90,324 @@ def log(
         token_data = get_token_data(token)
         user_id = ObjectId(token_data.user_id)
 
-        user_entries = changelog_db.find_by("user_id", user_id)
-        user_entries = sorted(user_entries, key=lambda x: x.created_at, reverse=True)
+        with console.status(
+            "[bold blue]Fetching changelog entries...[/bold blue]", spinner="dots"
+        ) as status:
 
-        if not user_entries:
-            console.print("[yellow]No changelog entries found.[/yellow]")
-            return
+            status.update("Connecting to Mongo DB...", spinner="dots")
+            user_entries = changelog_db.find_by("user_id", user_id)
+            user_entries = sorted(
+                user_entries, key=lambda x: x.created_at, reverse=True
+            )
+            status.update("Crunching data...", spinner="dots")
+            if not user_entries:
+                console.print("[yellow]No changelog entries found.[/yellow]")
+                return
 
+            if tags:
+                tag_ids = []
+                for tag_name in tags:
+                    tag_entries = list(tag_db.find_by("name", tag_name))
+                    if tag_entries:
+                        tag_ids.append(tag_entries[0].id)
 
-        if tags:
-            tag_ids = []
-            for tag_name in tags:
-                tag_entries = list(tag_db.find_by("name", tag_name))
-                if tag_entries:
-                    tag_ids.append(tag_entries[0].id)
+                if tag_ids:
+                    user_entries = [
+                        entry
+                        for entry in user_entries
+                        if any(tag_id in entry.tags for tag_id in tag_ids)
+                    ]
 
-            if tag_ids:
-                user_entries = [
-                    entry
-                    for entry in user_entries
-                    if any(tag_id in entry.tags for tag_id in tag_ids)
-                ]
-
-        if limit:
-            user_entries = user_entries[:limit]
+            if limit:
+                user_entries = user_entries[:limit]
 
         if json:
             print(user_entries)
-        else:
-            max_message_width = 0
-            for entry in user_entries:
-                gitmojis_str = (
-                    " ".join([emoji.value for emoji in entry.gitmojis])
-                    if entry.gitmojis
-                    else ""
-                )
-                content_with_emoji = (
-                    f"{gitmojis_str} {entry.content}" if gitmojis_str else entry.content
-                )
+            return
 
-                tag_names = [
-                    tag_db.get(tag_id).name
-                    for tag_id in entry.tags
-                    if tag_db.get(tag_id)
-                ]
-                tags_str = ", ".join(tag_names) if tag_names else "no tags"
+        # Calculate the maximum width for each column
+        max_content_width = 0
+        max_tags_width = 0
+        date_width = 19  # Fixed width for date format "YYYY-MM-DD HH:MM"
 
-                date_str = entry.created_at.strftime("%Y-%m-%d %H:%M")
+        for entry in user_entries:
+            gitmojis_str = (
+                " ".join([emoji.value for emoji in entry.gitmojis])
+                if entry.gitmojis
+                else ""
+            )
+            content_with_emoji = (
+                f"{gitmojis_str} {entry.content}" if gitmojis_str else entry.content
+            )
 
-                max_message_width = max(
-                    max_message_width,
-                    len(content_with_emoji),
-                    len(tags_str),
-                    len(date_str),
-                )
+            tag_names = [
+                tag_db.get(tag_id).name for tag_id in entry.tags if tag_db.get(tag_id)
+            ]
+            tags_str = ", ".join(tag_names) if tag_names else "no tags"
 
-            for entry in user_entries:
-                date_str = entry.created_at.strftime("%Y-%m-%d %H:%M")
+            max_content_width = max(max_content_width, len(content_with_emoji))
+            max_tags_width = max(max_tags_width, len(tags_str))
 
-                tag_names = []
-                for tag_id in entry.tags:
-                    tag = tag_db.get(tag_id)
-                    if tag:
-                        tag_names.append(tag.name)
+        total_width = (
+            max_content_width + max_tags_width + date_width + 6
+        )
 
-                tags_str = ", ".join(tag_names) if tag_names else "no tags"
+        user = user_db.get(user_id)
+        username = user.username if user else "User"
 
-                gitmojis_str = (
-                    " ".join([emoji.value for emoji in entry.gitmojis])
-                    if entry.gitmojis
-                    else ""
-                )
+        console.print("=" * total_width)
+        header = Text()
+        header.append("CHANGELOG FOR ", style="white")
+        header.append(username, style="bold magenta")
+        header.append(f" ({len(user_entries)} entries)", style="dim")
+        console.print(header)
+        console.print("=" * total_width)
 
-                message = Text()
+        # Add column headers with improved styling
+        column_header = Text()
+        column_header.append(f"{'DATE':<{date_width}} | ", style="bold cyan")
+        column_header.append(f"{'TAGS':<{max_tags_width}} | ", style="bold cyan")
+        column_header.append("MESSAGE", style="bold cyan")
+        console.print(column_header)
+        console.print("─" * total_width)
 
-                message.append(f"{tags_str:<{max_message_width}}\n", style="dim")
+        # Display entries in a formatted table-like structure with improved styling
+        for entry in user_entries:
+            date_str = entry.created_at.strftime("%Y-%m-%d %H:%M")
 
-                content_part = Text()
-                if gitmojis_str:
-                    content_part.append(f"{gitmojis_str} ")
+            tag_names = []
+            for tag_id in entry.tags:
+                tag = tag_db.get(tag_id)
+                if tag:
+                    tag_names.append(tag.name)
 
-                if entry.sentiment_score > 0.3:
-                    content_part.append(entry.content, style="green")
-                elif entry.sentiment_score < -0.3:
-                    content_part.append(entry.content, style="red")
-                else:
-                    content_part.append(entry.content)
+            tags_str = ", ".join(tag_names) if tag_names else "no tags"
 
-                message.append(content_part)
+            gitmojis_str = (
+                " ".join([emoji.value for emoji in entry.gitmojis])
+                if entry.gitmojis
+                else ""
+            )
+            content = entry.content
 
-                message.append(f"\n{date_str:<{max_message_width}}", style="dim")
+            # Create a row with columns
+            row = Text()
 
-                console.print(message)
+            # Date column with improved styling
+            row.append(f"{date_str:<{date_width}} | ", style="dim")
 
-                console.print("─" * max_message_width)
+            # Tags column with highlighting
+            tags_styled = Text()
+            tags_styled.append(tags_str, style="bold cyan")
+            row.append(tags_styled)
+            row.append(" " * (max_tags_width - len(tags_str)) + " | ")
+
+            # Content column with sentiment-based styling
+            content_part = Text()
+            if gitmojis_str:
+                content_part.append(f"{gitmojis_str} ", style="bold")
+
+            if entry.sentiment_score > 0.3:
+                content_part.append(content, style="green")
+            elif entry.sentiment_score < -0.3:
+                content_part.append(content, style="red")
+            else:
+                content_part.append(content)
+
+            row.append(content_part)
+
+            console.print(row)
+            console.print("─" * total_width)
 
     except Exception as e:
-        console.print(f"[bold red]Error:[/bold red] {str(e)}")
+        console.print(f"[bold red]ERROR:[/bold red] {str(e)}")
+        import traceback
 
+        console.print("[dim]" + traceback.format_exc() + "[/dim]")
+
+
+@app.command()
+def write() -> None:
+    """
+    Write a new changelog entry.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
+    def styled_prompt(question, default=""):
+        """Custom prompt function that keeps styling consistent"""
+        console.print(f"[bold]QUESTION:[/bold] {question}", end="")
+        response = input(" ") or default
+        return response
+
+    token = load_token()
+    if not token:
+        console.print("[bold red]No token found. Please authenticate first.[/bold red]")
+        return
+
+    try:
+        token_data = get_token_data(token)
+        user_id = token_data.user_id
+
+        console.print("\n[bold blue]━━━ CREATE NEW ENTRY ━━━[/bold blue]\n")
+
+        content = styled_prompt("What's on your mind?")
+        console.print(f"[dim italic]You wrote: {content}[/dim italic]\n")
+
+        # Stylized section for entry types
+        console.print("[bold magenta]SELECT ENTRY TYPE[/bold magenta]")
+        for i, entry_type in enumerate(EntryType):
+            style = "bold cyan" if i == 0 else "cyan"  # Highlight default option
+            console.print(f"  [{style}]{i + 1}[/{style}]. {entry_type.value}")
+
+        entry_type_idx = styled_prompt("Select entry type (number)", "1")
+        try:
+            entry_type = list(EntryType)[int(entry_type_idx) - 1]
+            console.print(f"[dim italic]Selected: {entry_type.value}[/dim italic]\n")
+        except (ValueError, IndexError):
+            entry_type = EntryType.HIGHLIGHT
+            console.print(
+                f"[yellow]Invalid selection, using default: {entry_type.value}[/yellow]\n"
+            )
+
+        console.print("[bold magenta]SELECT MOOD[/bold magenta]")
+        for i, mood in enumerate(Mood):
+            style = "bold cyan" if i == 0 else "cyan"  # Highlight default option
+            console.print(f"  [{style}]{i + 1}[/{style}]. {mood.value}")
+
+        mood_idx = styled_prompt("Select mood (number)", "1")
+        try:
+            mood = list(Mood)[int(mood_idx) - 1]
+            console.print(f"[dim italic]Selected: {mood.value}[/dim italic]\n")
+        except (ValueError, IndexError):
+            mood = Mood.NEUTRAL
+            console.print(
+                f"[yellow]Invalid selection, using default: {mood.value}[/yellow]\n"
+            )
+
+        console.print("[bold magenta]ADD TAGS[/bold magenta]")
+        tag_input = styled_prompt("Enter tags (comma-separated)", "")
+
+        tag_names = [t.strip() for t in tag_input.split(",") if t.strip()]
+        if tag_names:
+            console.print(
+                f"[dim italic]Tags entered: {', '.join(tag_names)}[/dim italic]\n"
+            )
+        else:
+            console.print("[dim italic]No tags entered[/dim italic]\n")
+
+        with console.status(
+            "[bold green]Processing entry...[/bold green]", spinner="dots"
+        ) as status:
+            tag_ids = []
+
+            for tag_name in tag_names:
+                existing_tags = tag_db.find_by("name", tag_name)
+                existing_tags = [t for t in existing_tags if str(t.user_id) == user_id]
+
+                if existing_tags:
+                    tag_ids.append(existing_tags[0].id)
+                elif tag_name:
+                    new_tag = tag_db.create(
+                        Tag(name=tag_name, user_id=PyObjectId(user_id))
+                    )
+                    console.print(
+                        f"[green]✓[/green] Created new tag: [bold cyan]{tag_name}[/bold cyan]"
+                    )
+                    tag_ids.append(new_tag.id)
+
+            entry = ChangelogEntry(
+                user_id=PyObjectId(user_id),
+                content=content,
+                entry_type=entry_type,
+                mood=mood,
+                tags=tag_ids,
+                week_number=datetime.now().isocalendar()[1],
+            )
+
+            entry = enrich_entry(entry)
+            created_entry = changelog_db.create(entry)
+
+        console.print("\n[bold green]✅ ENTRY CREATED SUCCESSFULLY![/bold green]")
+
+        # Format the entry nicely
+        gitmojis_str = (
+            " ".join([emoji.value for emoji in created_entry.gitmojis])
+            if created_entry.gitmojis
+            else ""
+        )
+        formatted_content = (
+            f"{gitmojis_str} {created_entry.content}"
+            if gitmojis_str
+            else created_entry.content
+        )
+
+        tag_names = []
+        for tag_id in created_entry.tags:
+            tag = tag_db.get(tag_id)
+            if tag:
+                tag_names.append(tag.name)
+        tags_str = ", ".join(tag_names) if tag_names else "no tags"
+
+        sentiment_score = created_entry.sentiment_score
+        if sentiment_score > 0.5:
+            sentiment_color = "bright_green"
+            sentiment_label = "Very Positive"
+        elif sentiment_score > 0.1:
+            sentiment_color = "green"
+            sentiment_label = "Positive"
+        elif sentiment_score > -0.1:
+            sentiment_color = "white"
+            sentiment_label = "Neutral"
+        elif sentiment_score > -0.5:
+            sentiment_color = "red"
+            sentiment_label = "Negative"
+        else:
+            sentiment_color = "bright_red"
+            sentiment_label = "Very Negative"
+
+        from rich.panel import Panel
+        from rich.text import Text
+
+        content_text = Text(formatted_content)
+        panel_content = Text()
+        panel_content.append(content_text)
+        panel_content.append("\n\n")
+        panel_content.append("Type: ", style="dim")
+        panel_content.append(created_entry.entry_type.value, style="bold blue")
+        panel_content.append(" | Mood: ", style="dim")
+        panel_content.append(created_entry.mood.value, style="bold yellow")
+        panel_content.append("\nTags: ", style="dim")
+        panel_content.append(tags_str, style="bold cyan")
+        panel_content.append("\nSentiment: ", style="dim")
+        panel_content.append(
+            f"{sentiment_label} ({sentiment_score:.2f})",
+            style=f"bold {sentiment_color}",
+        )
+        panel_content.append("\nCreated: ", style="dim")
+        panel_content.append(
+            created_entry.created_at.strftime("%Y-%m-%d %H:%M:%S"), style="italic"
+        )
+
+        console.print(
+            Panel(
+                panel_content,
+                title="[bold]New Entry Summary[/bold]",
+                border_style="blue",
+                padding=(1, 2),
+            )
+        )
+
+    except Exception as e:
+        console.print(f"\n[bold red]ERROR:[/bold red] {str(e)}")
+        import traceback
+
+        console.print("[dim]" + traceback.format_exc() + "[/dim]")
 
 if __name__ == "__main__":
     app()
