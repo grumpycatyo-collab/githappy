@@ -116,7 +116,11 @@ def log(
         if json:
             print(user_entries)
         else:
-            max_message_width = 0
+            # First calculate the maximum width for each column
+            max_content_width = 0
+            max_tags_width = 0
+            date_width = 19  # Fixed width for date format "YYYY-MM-DD HH:MM"
+
             for entry in user_entries:
                 gitmojis_str = (
                     " ".join([emoji.value for emoji in entry.gitmojis])
@@ -134,15 +138,36 @@ def log(
                 ]
                 tags_str = ", ".join(tag_names) if tag_names else "no tags"
 
-                date_str = entry.created_at.strftime("%Y-%m-%d %H:%M")
+                max_content_width = max(max_content_width, len(content_with_emoji))
+                max_tags_width = max(max_tags_width, len(tags_str))
 
-                max_message_width = max(
-                    max_message_width,
-                    len(content_with_emoji),
-                    len(tags_str),
-                    len(date_str),
-                )
+            # Calculate total width for the separator line
+            total_width = (
+                max_content_width + max_tags_width + date_width + 6
+            )  # Adding padding between columns
 
+            # Get username for the header
+            user = user_db.get(user_id)
+            username = user.username if user else "User"
+
+            # Add header with username and count of entries
+            console.print("=" * total_width)
+            header = Text()
+            header.append("CHANGELOG FOR ", style="white")
+            header.append(username, style="bold magenta")
+            header.append(f" ({len(user_entries)} entries)", style="dim")
+            console.print(header)
+            console.print("=" * total_width)
+
+            # Add column headers
+            column_header = Text()
+            column_header.append(f"{'DATE':<{date_width}} | ", style="bold")
+            column_header.append(f"{'TAGS':<{max_tags_width}} | ", style="bold")
+            column_header.append("MESSAGE", style="bold")
+            console.print(column_header)
+            console.print("─" * total_width)
+
+            # Display entries in a formatted table-like structure
             for entry in user_entries:
                 date_str = entry.created_at.strftime("%Y-%m-%d %H:%M")
 
@@ -159,29 +184,36 @@ def log(
                     if entry.gitmojis
                     else ""
                 )
+                content = entry.content
 
-                message = Text()
+                # Create a row with columns
+                row = Text()
 
-                message.append(f"{tags_str:<{max_message_width}}\n", style="dim")
+                # Date column
+                row.append(f"{date_str:<{date_width}} | ", style="dim")
 
+                # Tags column with highlighting
+                tags_styled = Text()
+                tags_styled.append(tags_str, style="bold cyan")
+                row.append(tags_styled)
+                row.append(" " * (max_tags_width - len(tags_str)) + " | ")
+
+                # Content column with sentiment-based styling
                 content_part = Text()
                 if gitmojis_str:
                     content_part.append(f"{gitmojis_str} ")
 
                 if entry.sentiment_score > 0.3:
-                    content_part.append(entry.content, style="green")
+                    content_part.append(content, style="green")
                 elif entry.sentiment_score < -0.3:
-                    content_part.append(entry.content, style="red")
+                    content_part.append(content, style="red")
                 else:
-                    content_part.append(entry.content)
+                    content_part.append(content)
 
-                message.append(content_part)
+                row.append(content_part)
 
-                message.append(f"\n{date_str:<{max_message_width}}", style="dim")
-
-                console.print(message)
-
-                console.print("─" * max_message_width)
+                console.print(row)
+                console.print("─" * total_width)
 
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {str(e)}")
