@@ -16,8 +16,6 @@ app = typer.Typer()
 console = Console()
 
 
-
-
 @app.command()
 def auth(bearer: str = None) -> None:
     """
@@ -35,14 +33,26 @@ def auth(bearer: str = None) -> None:
     if bearer:
         try:
             token_data = get_token_data(bearer)
-            print(f"Authenticated user: {token_data.username} with role: {token_data.role}")
+
+            message = Text()
+            message.append("✅ Authentication successful\n", style="bold green")
+            message.append("User: ", style="dim")
+            message.append(token_data.username, style="bold")
+            message.append(" | Role: ", style="dim")
+            message.append(token_data.role, style="blue")
+            console.print(message)
             save_token(bearer)
         except Exception as e:
-            print("Bad:", e)
+            error_message = Text()
+            error_message.append("❌ Authentication failed\n", style="bold red")
+            error_message.append(str(e))
+
+            console.print(error_message)
     else:
-        print("No token provided.")
-
-
+        error_message = Text()
+        error_message.append("⚠️ No token provided\n", style="bold yellow")
+        error_message.append("Please provide a bearer token to authenticate")
+        console.print(error_message)
 
 @app.command()
 def log(
@@ -51,7 +61,7 @@ def log(
         None, "--tag", "-t", help="Filter by tag names"
     ),
     limit: int = typer.Option(
-        30, "--limit", "-l", help="Limit number of entries to show"
+        10, "--limit", "-l", help="Limit number of entries to show"
     ),
 ) -> None:
     """
@@ -64,7 +74,7 @@ def log(
     tags : list[str], optional
         Filter by tag names
     limit : int, optional
-        Limit number of entries to show (default is 30)
+        Limit number of entries to show (default is 10)
     Returns
     -------
     None
