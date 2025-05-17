@@ -219,8 +219,6 @@ def log(
 
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {str(e)}")
-
-
 @app.command()
 def write() -> None:
     """
@@ -234,6 +232,12 @@ def write() -> None:
     -------
     None
     """
+    def styled_prompt(question, default=""):
+        """Custom prompt function that keeps styling consistent"""
+        console.print(f"[bold]QUESTION:[/bold] {question}", end="")
+        response = input(" ") or default
+        return response
+
     token = load_token()
     if not token:
         console.print("[bold red]No token found. Please authenticate first.[/bold red]")
@@ -243,69 +247,168 @@ def write() -> None:
         token_data = get_token_data(token)
         user_id = token_data.user_id
 
-        content = typer.prompt("What's on your mind?")
+        # Create a styled heading for the entry creation process
+        console.print("\n[bold blue]━━━ CREATE NEW ENTRY ━━━[/bold blue]\n")
 
-        console.print("\nEntry types:")
+        # Stylized prompt for content using our custom function
+        content = styled_prompt("What's on your mind?")
+        console.print(f"[dim italic]You wrote: {content}[/dim italic]\n")
+
+        # Stylized section for entry types
+        console.print("[bold magenta]SELECT ENTRY TYPE[/bold magenta]")
         for i, entry_type in enumerate(EntryType):
-            console.print(f"  {i + 1}. {entry_type.value}")
+            style = "bold cyan" if i == 0 else "cyan"  # Highlight default option
+            console.print(f"  [{style}]{i + 1}[/{style}]. {entry_type.value}")
 
-        entry_type_idx = typer.prompt("Select entry type (number)", default="1")
+        entry_type_idx = styled_prompt("Select entry type (number)", "1")
         try:
             entry_type = list(EntryType)[int(entry_type_idx) - 1]
+            console.print(f"[dim italic]Selected: {entry_type.value}[/dim italic]\n")
         except (ValueError, IndexError):
             entry_type = EntryType.HIGHLIGHT
             console.print(
-                f"[yellow]Invalid selection, using default: {entry_type.value}[/yellow]"
+                f"[yellow]Invalid selection, using default: {entry_type.value}[/yellow]\n"
             )
 
-        # Display mood options
-        console.print("\nMoods:")
+        # Stylized section for moods
+        console.print("[bold magenta]SELECT MOOD[/bold magenta]")
         for i, mood in enumerate(Mood):
-            console.print(f"  {i + 1}. {mood.value}")
+            style = "bold cyan" if i == 0 else "cyan"  # Highlight default option
+            console.print(f"  [{style}]{i + 1}[/{style}]. {mood.value}")
 
-        # Get mood selection
-        mood_idx = typer.prompt("Select mood (number)", default="1")
+        mood_idx = styled_prompt("Select mood (number)", "1")
         try:
             mood = list(Mood)[int(mood_idx) - 1]
+            console.print(f"[dim italic]Selected: {mood.value}[/dim italic]\n")
         except (ValueError, IndexError):
             mood = Mood.NEUTRAL
             console.print(
-                f"[yellow]Invalid selection, using default: {mood.value}[/yellow]"
+                f"[yellow]Invalid selection, using default: {mood.value}[/yellow]\n"
             )
 
-        tag_input = typer.prompt("Enter tags (comma-separated)", default="")
+        # Stylized section for tags
+        console.print("[bold magenta]ADD TAGS[/bold magenta]")
+        tag_input = styled_prompt("Enter tags (comma-separated)", "")
 
         tag_names = [t.strip() for t in tag_input.split(",") if t.strip()]
-        tag_ids = []
+        if tag_names:
+            console.print(
+                f"[dim italic]Tags entered: {', '.join(tag_names)}[/dim italic]\n"
+            )
+        else:
+            console.print("[dim italic]No tags entered[/dim italic]\n")
 
-        for tag_name in tag_names:
-            existing_tags = tag_db.find_by("name", tag_name)
-            existing_tags = [t for t in existing_tags if str(t.user_id) == user_id]
+        with console.status(
+            "[bold green]Processing entry...[/bold green]", spinner="dots"
+        ) as status:
+            tag_ids = []
 
-            if existing_tags:
-                tag_ids.append(existing_tags[0].id)
-            elif tag_name:
-                new_tag = tag_db.create(Tag(name=tag_name, user_id=PyObjectId(user_id)))
-                tag_ids.append(new_tag.id)
-                console.print(f"[green]Created new tag:[/green] {tag_name}")
+            for tag_name in tag_names:
+                existing_tags = tag_db.find_by("name", tag_name)
+                existing_tags = [t for t in existing_tags if str(t.user_id) == user_id]
 
-        entry = ChangelogEntry(
-            user_id=PyObjectId(user_id),
-            content=content,
-            entry_type=entry_type,
-            mood=mood,
-            tags=tag_ids,
-            week_number=datetime.now().isocalendar()[1],
+                if existing_tags:
+                    tag_ids.append(existing_tags[0].id)
+                elif tag_name:
+                    new_tag = tag_db.create(
+                        Tag(name=tag_name, user_id=PyObjectId(user_id))
+                    )
+                    console.print(
+                        f"[green]✓[/green] Created new tag: [bold cyan]{tag_name}[/bold cyan]"
+                    )
+                    tag_ids.append(new_tag.id)
+
+            entry = ChangelogEntry(
+                user_id=PyObjectId(user_id),
+                content=content,
+                entry_type=entry_type,
+                mood=mood,
+                tags=tag_ids,
+                week_number=datetime.now().isocalendar()[1],
+            )
+
+            entry = enrich_entry(entry)
+            created_entry = changelog_db.create(entry)
+
+
+        # Show a beautiful summary of the created entry
+        console.print("\n[bold green]✅ ENTRY CREATED SUCCESSFULLY![/bold green]")
+
+        # Format the entry nicely
+        gitmojis_str = (
+            " ".join([emoji.value for emoji in created_entry.gitmojis])
+            if created_entry.gitmojis
+            else ""
+        )
+        formatted_content = (
+            f"{gitmojis_str} {created_entry.content}"
+            if gitmojis_str
+            else created_entry.content
         )
 
-        entry = enrich_entry(entry)
+        tag_names = []
+        for tag_id in created_entry.tags:
+            tag = tag_db.get(tag_id)
+            if tag:
+                tag_names.append(tag.name)
+        tags_str = ", ".join(tag_names) if tag_names else "no tags"
 
-        created_entry = changelog_db.create(entry)
+        # Determine sentiment color and label
+        sentiment_score = created_entry.sentiment_score
+        if sentiment_score > 0.5:
+            sentiment_color = "bright_green"
+            sentiment_label = "Very Positive"
+        elif sentiment_score > 0.1:
+            sentiment_color = "green"
+            sentiment_label = "Positive"
+        elif sentiment_score > -0.1:
+            sentiment_color = "white"
+            sentiment_label = "Neutral"
+        elif sentiment_score > -0.5:
+            sentiment_color = "red"
+            sentiment_label = "Negative"
+        else:
+            sentiment_color = "bright_red"
+            sentiment_label = "Very Negative"
 
-        console.print("\n[bold green]✅ Entry created successfully![/bold green]")
+        # Display the entry in a nicely formatted panel
+        from rich.panel import Panel
+        from rich.text import Text
+
+        content_text = Text(formatted_content)
+        panel_content = Text()
+        panel_content.append(content_text)
+        panel_content.append("\n\n")
+        panel_content.append("Type: ", style="dim")
+        panel_content.append(created_entry.entry_type.value, style="bold blue")
+        panel_content.append(" | Mood: ", style="dim")
+        panel_content.append(created_entry.mood.value, style="bold yellow")
+        panel_content.append("\nTags: ", style="dim")
+        panel_content.append(tags_str, style="bold cyan")
+        panel_content.append("\nSentiment: ", style="dim")
+        panel_content.append(
+            f"{sentiment_label} ({sentiment_score:.2f})",
+            style=f"bold {sentiment_color}",
+        )
+        panel_content.append("\nCreated: ", style="dim")
+        panel_content.append(
+            created_entry.created_at.strftime("%Y-%m-%d %H:%M:%S"), style="italic"
+        )
+
+        console.print(
+            Panel(
+                panel_content,
+                title="[bold]New Entry Summary[/bold]",
+                border_style="blue",
+                padding=(1, 2),
+            )
+        )
+
     except Exception as e:
-        console.print(f"[bold red]Error:[/bold red] {str(e)}")
+        console.print(f"\n[bold red]ERROR:[/bold red] {str(e)}")
+        import traceback
 
+        console.print("[dim]" + traceback.format_exc() + "[/dim]")
 
 if __name__ == "__main__":
     app()
