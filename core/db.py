@@ -68,40 +68,57 @@ class MongoDB(Generic[T]):
         if "_id" in item:
             item["id"] = str(item["_id"])
         return item
-    
+
     def _prepare_for_mongo(self, item: T) -> Dict:
         """
         Prepare item for MongoDB storage, converting id to _id and handling ObjectIds.
         """
         data = item.model_dump(by_alias=True, exclude_none=True)
+
         # Convert id to _id for MongoDB
         if "id" in data:
-            data["_id"] = data.pop("id")
-        # Convert all PyObjectId fields to ObjectId
+            # If id is a string, convert to ObjectId
+            id_value = data.pop("id")
+            if isinstance(id_value, str):
+                try:
+                    data["_id"] = ObjectId(id_value)
+                except:
+                    data["_id"] = id_value
+            else:
+                data["_id"] = id_value
+
+        # Ensure other *_id fields are also ObjectIds
         for key, value in data.items():
-            if isinstance(value, PyObjectId):
-                data[key] = ObjectId(str(value))
-            elif isinstance(value, list) and value and isinstance(value[0], PyObjectId):
-                data[key] = [ObjectId(str(x)) for x in value]
+            if key == "_id" or key == "user_id" or key.endswith("_id"):
+                if isinstance(value, str):
+                    try:
+                        data[key] = ObjectId(value)
+                    except:
+                        pass
+            elif isinstance(value, list) and value and key == "tags":
+                # Handle arrays of IDs (like tags)
+                try:
+                    data[key] = [
+                        ObjectId(x) if isinstance(x, str) else x for x in value
+                    ]
+                except:
+                    pass
+
         return data
-    
+
     def get(self, id: PyObjectId) -> Optional[T]:
         """
         Get an item by ID.
-
-        Parameters
-        ----------
-        id : PyObjectId
-            Item ID
-
-        Returns
-        -------
-        Optional[T]
-            Found item or None
         """
-        result = self.collection.find_one({"_id": ObjectId(str(id))})
+        if not isinstance(id, ObjectId):
+            try:
+                id = ObjectId(str(id))
+            except:
+                logger.error(f"Invalid ObjectId: {id}")
+                return None
+
+        result = self.collection.find_one({"_id": id})
         if result:
-            result = self._convert_id(result)
             return self.model_class.model_validate(result)
         return None
     
@@ -176,29 +193,24 @@ class MongoDB(Generic[T]):
         results = self.collection.find()
         items = [self.model_class.model_validate(self._convert_id(item)) for item in results]
         return items
-    
+
     def find_by(self, field: str, value: Any) -> List[T]:
         """
         Find items by field value.
-
-        Parameters
-        ----------
-        field : str
-            Field name to search
-        value : Any
-            Value to search for
-
-        Returns
-        -------
-        List[T]
-            List of matching items
         """
-        # Convert PyObjectId to ObjectId for queries
-        if isinstance(value, PyObjectId):
-            value = ObjectId(str(value))
-        
-        results = self.collection.find({field: value})
-        items = [self.model_class.model_validate(self._convert_id(item)) for item in results]
+        # Convert to ObjectId if searching by ID fields
+        if field == "_id" or field == "user_id" or field.endswith("_id"):
+            if isinstance(value, str):
+                try:
+                    value = ObjectId(value)
+                except:
+                    logger.error(f"Invalid ObjectId: {value}")
+                    return []
+            elif isinstance(value, PyObjectId):
+                value = ObjectId(str(value))
+
+        results = list(self.collection.find({field: value}))
+        items = [self.model_class.model_validate(item) for item in results]
         return items
     
     def find_with_pagination(self, query: Dict, skip: int = 0, limit: int = 10) -> List[T]:
