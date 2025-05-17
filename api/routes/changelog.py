@@ -3,11 +3,11 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from core.auth import TokenData, get_current_user
+from core.auth import TokenData, get_current_user, role_required
 from core.logger import logger
 from core.sentiment import enrich_entry
 
-from core.db import changelog_db
+from core.db import changelog_db, user_db
 from models import ChangelogEntry, ChangelogEntryCreate, ChangelogEntryUpdate, Role, PyObjectId
 from datetime import datetime
 router = APIRouter()
@@ -15,38 +15,47 @@ router = APIRouter()
 
 @router.get("/", response_model=list[ChangelogEntry])
 async def get_changelog_entries(
-        skip: int = Query(0, description="Number of entries to skip for pagination"),
-        limit: int = Query(10, description="Number of entries to return per page"),
-        current_user: TokenData = Depends(get_current_user),
+    skip: int = Query(0, description="Number of entries to skip for pagination"),
+    limit: int = Query(10, description="Number of entries to return per page"),
+    current_user: TokenData = Depends(role_required([Role.USER, Role.ADMIN])),
 ):
     """
     Get all changelog entries for the current user.
+    Requires WRITER or ADMIN role.
 
     Parameters
     ----------
-    skip
+    skip : int
         Number of entries to skip
-    limit
+    limit : int
         Maximum number of entries to return
-    current_user
-        Current authenticated user
+    current_user : TokenData
+        Current authenticated user with WRITER or ADMIN role
 
     Returns
     -------
     list[ChangelogEntry]
-        list of changelog entries
+        List of changelog entries
     """
+    if current_user.role == Role.ADMIN:
+        all_entries = changelog_db.list_all()
+        paginated_entries = all_entries[skip : skip + limit]
+        logger.info(
+            f"Admin {current_user.username} retrieved {len(paginated_entries)} entries"
+        )
+        return paginated_entries
+
+    # For regular users, show only their entries
     user_entries = changelog_db.find_by("user_id", PyObjectId(current_user.user_id))
-
     paginated_entries = user_entries[skip : skip + limit]
-
-    logger.info(f"Retrieved {len(paginated_entries)} changelog entries for user {current_user.username}")
+    logger.info(
+        f"User {current_user.username} retrieved {len(paginated_entries)} of their entries"
+    )
     return paginated_entries
-
 
 @router.get("/{entry_id}", response_model=ChangelogEntry)
 async def get_changelog_entry(
-        entry_id: str, current_user: TokenData = Depends(get_current_user)
+        entry_id: str, current_user: TokenData = Depends(role_required([Role.USER, Role.ADMIN]))
 ):
     """
     Get a specific changelog entry.
@@ -89,7 +98,7 @@ async def get_changelog_entry(
 
 @router.post("/", response_model=ChangelogEntry, status_code=status.HTTP_201_CREATED)
 async def create_changelog_entry(
-        entry_data: ChangelogEntryCreate, current_user: TokenData = Depends(get_current_user)
+        entry_data: ChangelogEntryCreate, current_user: TokenData = Depends(role_required([Role.USER, Role.ADMIN]))
 ):
     """
     Create a new changelog entry.
@@ -141,7 +150,7 @@ async def create_changelog_entry(
 async def update_changelog_entry(
         entry_id: str,
         entry_data: ChangelogEntryUpdate,
-        current_user: TokenData = Depends(get_current_user),
+        current_user: TokenData = Depends(role_required([Role.USER, Role.ADMIN])),
 ):
     """
     Update a changelog entry.
@@ -219,7 +228,7 @@ async def update_changelog_entry(
 
 @router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_changelog_entry(
-        entry_id: str, current_user: TokenData = Depends(get_current_user)
+        entry_id: str, current_user: TokenData = Depends(role_required([Role.USER, Role.ADMIN]))
 ):
     """
     Delete a changelog entry.
@@ -266,7 +275,7 @@ async def delete_changelog_entry(
 async def get_entries_by_week(
         week_number: int,
         year: int = Query(datetime.now().year, description="Year for the week number"),
-        current_user: TokenData = Depends(get_current_user),
+        current_user: TokenData = Depends(role_required([Role.USER, Role.ADMIN])),
 ):
     """
     Get all changelog entries for a specific week.
@@ -296,7 +305,7 @@ async def get_entries_by_week(
 
 @router.get("/{entry_id}/formatted", response_model=dict)
 async def get_formatted_entry(
-        entry_id: str, current_user: TokenData = Depends(get_current_user)
+        entry_id: str, current_user: TokenData = Depends(role_required([Role.USER, Role.ADMIN]))
 ):
     """
     Get formatted content of an entry.
@@ -342,3 +351,61 @@ async def get_formatted_entry(
         "sentiment_score": entry.sentiment_score,
         "created_at": entry.created_at
     }
+
+
+@router.get("/user/{username}", response_model=list[ChangelogEntry])
+async def get_user_changelog_entries(
+        username: str,
+        skip: int = Query(0, description="Number of entries to skip for pagination"),
+        limit: int = Query(10, description="Number of entries to return per page"),
+        current_user: TokenData = Depends(get_current_user),
+):
+    """
+    Get changelog entries for a specific user.
+    VISITORs can only see entries marked as public.
+    WRITERs can only see their own entries.
+    ADMINs can see any user's entries.
+
+    Parameters
+    ----------
+    username : str
+        Username to get entries for
+    skip : int
+        Number of entries to skip
+    limit : int
+        Maximum number of entries to return
+    current_user : TokenData
+        Current authenticated user
+
+    Returns
+    -------
+    list[ChangelogEntry]
+        List of changelog entries
+
+    Raises
+    ------
+    HTTPException
+        404 if user not found
+        403 if permission denied
+    """
+    # Find the user by username
+    users = user_db.find_by("username", username)
+    if not users:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    target_user = users[0]
+
+    if current_user.role == Role.VISITOR:
+        # Visitors can only see entries marked as public (HIGHLIGHT or REFLECTION)
+        entries = changelog_db.find_by("user_id", target_user.id)
+        entries = [e for e in entries if e.entry_type in ["HIGHLIGHT", "REFLECTION"]]
+        paginated_entries = entries[skip : skip + limit]
+        logger.info(f"Visitor {current_user.username} viewed {len(paginated_entries)} public entries from {username}")
+        return paginated_entries
+
+    entries = changelog_db.find_by("user_id", target_user.id)
+    paginated_entries = entries[skip : skip + limit]
+
+    return paginated_entries

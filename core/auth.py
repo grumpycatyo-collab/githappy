@@ -180,6 +180,15 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+
+def role_required(allowed_roles: list[Role]):
+    def wrapper(user=Depends(get_current_user)):
+        if user.role not in allowed_roles:
+            raise HTTPException(status_code=403, detail="Not enough permissions")
+        return user
+    return wrapper
+
+
 def get_token_data(token: str) -> TokenData:
     """
     Get token data from JWT token.

@@ -4,7 +4,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from core.auth import TokenData, get_current_user
+from core.auth import TokenData, get_current_user, role_required
 from core.logger import logger
 from core.db import tag_db
 from models import Tag, TagCreate, Role, PyObjectId
@@ -46,7 +46,7 @@ async def get_tags(
 
 
 @router.post("/", response_model=Tag, status_code=status.HTTP_201_CREATED)
-async def create_tag(tag_data: TagCreate, current_user: TokenData = Depends(get_current_user)):
+async def create_tag(tag_data: TagCreate, current_user: TokenData = Depends(role_required([Role.USER, Role.ADMIN]))):
     """
     Create a new tag.
 
@@ -89,7 +89,7 @@ async def create_tag(tag_data: TagCreate, current_user: TokenData = Depends(get_
 
 
 @router.delete("/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_tag(tag_id: str, current_user: TokenData = Depends(get_current_user)):
+async def delete_tag(tag_id: str, current_user: TokenData = Depends(role_required([Role.USER, Role.ADMIN]))):
     """
     Delete a tag.
 
