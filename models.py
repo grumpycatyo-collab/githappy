@@ -45,11 +45,15 @@ class Role(str, Enum):
 
 
 class EntryType(str, Enum):
-    """Changelog entry type."""
+    """Entry type enum."""
 
     HIGHLIGHT = "HIGHLIGHT"
     BUG = "BUG"
     REFLECTION = "REFLECTION"
+    INSIGHT = "INSIGHT"
+    CHALLENGE = "CHALLENGE"
+    PROGRESS = "PROGRESS"
+    QUESTION = "QUESTION"
 
 
 class Mood(str, Enum):
@@ -82,6 +86,15 @@ class Gitmoji(str, Enum):
     WRENCH = "🔧"  # Configuration
     BRAIN = "🧠"  # Mental health
     EYES = "👀"  # Review
+    DIZZY = "💫"  # Confusion
+    CHART = "📊"  # Analytics
+    SEEDLING = "🌱"  # Growth
+    GLOBE = "🌍"  # Global
+    ART = "🎨"  # Creative
+    BOOKMARK = "🔖"  # Important
+    HOURGLASS = "⏳"  # Time
+    MUSCLE = "💪"  # Strength
+    MONEY = "💰"  # Finance
 
 
 class User(BaseModel):
