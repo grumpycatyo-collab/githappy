@@ -110,7 +110,7 @@ User: grumpycatyo_collab | Role: WRITER
 ```
 
 Then you can start playing with the `log` command to get your changelog entries:
-```bash
+```
 python3 cli.py log --help
                                                                                                                                  
 Usage: cli.py log [OPTIONS]                                                                                                     
@@ -128,7 +128,7 @@ Usage: cli.py log [OPTIONS]
 ```
 
 So if we do:
-```bash
+```
 python3 cli.py log --tag life --limit 2 
 
 ========================================================================================
@@ -140,6 +140,56 @@ DATE                | TAGS | MESSAGE
 ────────────────────────────────────────────────────────────────────────────────────────
 2025-05-17 18:33    | uni | ✨ Sometimes life doesn't feel that good
 ────────────────────────────────────────────────────────────────────────────────────────
+```
+
+Als you can create new entries by using the `write` command:
+
+```
+python3 cli.py write
+━━━ CREATE NEW ENTRY ━━━
+
+QUESTION: What's on your mind? I love my mom
+You wrote: I love my mom
+
+SELECT ENTRY TYPE
+  1. HIGHLIGHT
+  2. BUG
+  3. REFLECTION
+  4. INSIGHT
+  5. CHALLENGE
+  6. PROGRESS
+  7. QUESTION
+QUESTION: Select entry type (number) 1
+Selected: HIGHLIGHT
+
+SELECT MOOD
+  1. HAPPY
+  2. NEUTRAL
+  3. SAD
+  4. EXCITED
+  5. STRESSED
+  6. TIRED
+QUESTION: Select mood (number) 1
+Selected: HAPPY
+
+ADD TAGS
+QUESTION: Enter tags (comma-separated) mom
+Tags entered: mom
+
+✓ Created new tag: mom
+
+✅ ENTRY CREATED SUCCESSFULLY!
+╭────────────────────────────────────────────────────── New Entry Summary ──────────────────────────────────────────────────────╮
+│                                                                                                                               │
+│  ❤️ 🌱 I love my mom                                                                                                           │
+│                                                                                                                               │
+│  Type: HIGHLIGHT | Mood: HAPPY                                                                                                │
+│  Tags: mom                                                                                                                    │
+│  Sentiment: Very Positive (0.64)                                                                                              │
+│  Created: 2025-05-18 00:54:52                                                                                                 │
+│                                                                                                                               │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
 ```
 ## Requirements
 

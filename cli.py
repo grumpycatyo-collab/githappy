@@ -90,135 +90,142 @@ def log(
         token_data = get_token_data(token)
         user_id = ObjectId(token_data.user_id)
 
-        user_entries = changelog_db.find_by("user_id", user_id)
-        user_entries = sorted(user_entries, key=lambda x: x.created_at, reverse=True)
+        with console.status(
+            "[bold blue]Fetching changelog entries...[/bold blue]", spinner="dots"
+        ) as status:
 
-        if not user_entries:
-            console.print("[yellow]No changelog entries found.[/yellow]")
-            return
+            status.update("Connecting to Mongo DB...", spinner="dots")
+            user_entries = changelog_db.find_by("user_id", user_id)
+            user_entries = sorted(
+                user_entries, key=lambda x: x.created_at, reverse=True
+            )
+            status.update("Crunching data...", spinner="dots")
+            if not user_entries:
+                console.print("[yellow]No changelog entries found.[/yellow]")
+                return
 
+            if tags:
+                tag_ids = []
+                for tag_name in tags:
+                    tag_entries = list(tag_db.find_by("name", tag_name))
+                    if tag_entries:
+                        tag_ids.append(tag_entries[0].id)
 
-        if tags:
-            tag_ids = []
-            for tag_name in tags:
-                tag_entries = list(tag_db.find_by("name", tag_name))
-                if tag_entries:
-                    tag_ids.append(tag_entries[0].id)
+                if tag_ids:
+                    user_entries = [
+                        entry
+                        for entry in user_entries
+                        if any(tag_id in entry.tags for tag_id in tag_ids)
+                    ]
 
-            if tag_ids:
-                user_entries = [
-                    entry
-                    for entry in user_entries
-                    if any(tag_id in entry.tags for tag_id in tag_ids)
-                ]
-
-        if limit:
-            user_entries = user_entries[:limit]
+            if limit:
+                user_entries = user_entries[:limit]
 
         if json:
             print(user_entries)
-        else:
-            # First calculate the maximum width for each column
-            max_content_width = 0
-            max_tags_width = 0
-            date_width = 19  # Fixed width for date format "YYYY-MM-DD HH:MM"
+            return
 
-            for entry in user_entries:
-                gitmojis_str = (
-                    " ".join([emoji.value for emoji in entry.gitmojis])
-                    if entry.gitmojis
-                    else ""
-                )
-                content_with_emoji = (
-                    f"{gitmojis_str} {entry.content}" if gitmojis_str else entry.content
-                )
+        # Calculate the maximum width for each column
+        max_content_width = 0
+        max_tags_width = 0
+        date_width = 19  # Fixed width for date format "YYYY-MM-DD HH:MM"
 
-                tag_names = [
-                    tag_db.get(tag_id).name
-                    for tag_id in entry.tags
-                    if tag_db.get(tag_id)
-                ]
-                tags_str = ", ".join(tag_names) if tag_names else "no tags"
+        for entry in user_entries:
+            gitmojis_str = (
+                " ".join([emoji.value for emoji in entry.gitmojis])
+                if entry.gitmojis
+                else ""
+            )
+            content_with_emoji = (
+                f"{gitmojis_str} {entry.content}" if gitmojis_str else entry.content
+            )
 
-                max_content_width = max(max_content_width, len(content_with_emoji))
-                max_tags_width = max(max_tags_width, len(tags_str))
+            tag_names = [
+                tag_db.get(tag_id).name for tag_id in entry.tags if tag_db.get(tag_id)
+            ]
+            tags_str = ", ".join(tag_names) if tag_names else "no tags"
 
-            # Calculate total width for the separator line
-            total_width = (
-                max_content_width + max_tags_width + date_width + 6
-            )  # Adding padding between columns
+            max_content_width = max(max_content_width, len(content_with_emoji))
+            max_tags_width = max(max_tags_width, len(tags_str))
 
-            # Get username for the header
-            user = user_db.get(user_id)
-            username = user.username if user else "User"
+        total_width = (
+            max_content_width + max_tags_width + date_width + 6
+        )
 
-            # Add header with username and count of entries
-            console.print("=" * total_width)
-            header = Text()
-            header.append("CHANGELOG FOR ", style="white")
-            header.append(username, style="bold magenta")
-            header.append(f" ({len(user_entries)} entries)", style="dim")
-            console.print(header)
-            console.print("=" * total_width)
+        user = user_db.get(user_id)
+        username = user.username if user else "User"
 
-            # Add column headers
-            column_header = Text()
-            column_header.append(f"{'DATE':<{date_width}} | ", style="bold")
-            column_header.append(f"{'TAGS':<{max_tags_width}} | ", style="bold")
-            column_header.append("MESSAGE", style="bold")
-            console.print(column_header)
+        console.print("=" * total_width)
+        header = Text()
+        header.append("CHANGELOG FOR ", style="white")
+        header.append(username, style="bold magenta")
+        header.append(f" ({len(user_entries)} entries)", style="dim")
+        console.print(header)
+        console.print("=" * total_width)
+
+        # Add column headers with improved styling
+        column_header = Text()
+        column_header.append(f"{'DATE':<{date_width}} | ", style="bold cyan")
+        column_header.append(f"{'TAGS':<{max_tags_width}} | ", style="bold cyan")
+        column_header.append("MESSAGE", style="bold cyan")
+        console.print(column_header)
+        console.print("─" * total_width)
+
+        # Display entries in a formatted table-like structure with improved styling
+        for entry in user_entries:
+            date_str = entry.created_at.strftime("%Y-%m-%d %H:%M")
+
+            tag_names = []
+            for tag_id in entry.tags:
+                tag = tag_db.get(tag_id)
+                if tag:
+                    tag_names.append(tag.name)
+
+            tags_str = ", ".join(tag_names) if tag_names else "no tags"
+
+            gitmojis_str = (
+                " ".join([emoji.value for emoji in entry.gitmojis])
+                if entry.gitmojis
+                else ""
+            )
+            content = entry.content
+
+            # Create a row with columns
+            row = Text()
+
+            # Date column with improved styling
+            row.append(f"{date_str:<{date_width}} | ", style="dim")
+
+            # Tags column with highlighting
+            tags_styled = Text()
+            tags_styled.append(tags_str, style="bold cyan")
+            row.append(tags_styled)
+            row.append(" " * (max_tags_width - len(tags_str)) + " | ")
+
+            # Content column with sentiment-based styling
+            content_part = Text()
+            if gitmojis_str:
+                content_part.append(f"{gitmojis_str} ", style="bold")
+
+            if entry.sentiment_score > 0.3:
+                content_part.append(content, style="green")
+            elif entry.sentiment_score < -0.3:
+                content_part.append(content, style="red")
+            else:
+                content_part.append(content)
+
+            row.append(content_part)
+
+            console.print(row)
             console.print("─" * total_width)
 
-            # Display entries in a formatted table-like structure
-            for entry in user_entries:
-                date_str = entry.created_at.strftime("%Y-%m-%d %H:%M")
-
-                tag_names = []
-                for tag_id in entry.tags:
-                    tag = tag_db.get(tag_id)
-                    if tag:
-                        tag_names.append(tag.name)
-
-                tags_str = ", ".join(tag_names) if tag_names else "no tags"
-
-                gitmojis_str = (
-                    " ".join([emoji.value for emoji in entry.gitmojis])
-                    if entry.gitmojis
-                    else ""
-                )
-                content = entry.content
-
-                # Create a row with columns
-                row = Text()
-
-                # Date column
-                row.append(f"{date_str:<{date_width}} | ", style="dim")
-
-                # Tags column with highlighting
-                tags_styled = Text()
-                tags_styled.append(tags_str, style="bold cyan")
-                row.append(tags_styled)
-                row.append(" " * (max_tags_width - len(tags_str)) + " | ")
-
-                # Content column with sentiment-based styling
-                content_part = Text()
-                if gitmojis_str:
-                    content_part.append(f"{gitmojis_str} ")
-
-                if entry.sentiment_score > 0.3:
-                    content_part.append(content, style="green")
-                elif entry.sentiment_score < -0.3:
-                    content_part.append(content, style="red")
-                else:
-                    content_part.append(content)
-
-                row.append(content_part)
-
-                console.print(row)
-                console.print("─" * total_width)
-
     except Exception as e:
-        console.print(f"[bold red]Error:[/bold red] {str(e)}")
+        console.print(f"[bold red]ERROR:[/bold red] {str(e)}")
+        import traceback
+
+        console.print("[dim]" + traceback.format_exc() + "[/dim]")
+
+
 @app.command()
 def write() -> None:
     """
@@ -247,10 +254,8 @@ def write() -> None:
         token_data = get_token_data(token)
         user_id = token_data.user_id
 
-        # Create a styled heading for the entry creation process
         console.print("\n[bold blue]━━━ CREATE NEW ENTRY ━━━[/bold blue]\n")
 
-        # Stylized prompt for content using our custom function
         content = styled_prompt("What's on your mind?")
         console.print(f"[dim italic]You wrote: {content}[/dim italic]\n")
 
@@ -270,7 +275,6 @@ def write() -> None:
                 f"[yellow]Invalid selection, using default: {entry_type.value}[/yellow]\n"
             )
 
-        # Stylized section for moods
         console.print("[bold magenta]SELECT MOOD[/bold magenta]")
         for i, mood in enumerate(Mood):
             style = "bold cyan" if i == 0 else "cyan"  # Highlight default option
@@ -286,7 +290,6 @@ def write() -> None:
                 f"[yellow]Invalid selection, using default: {mood.value}[/yellow]\n"
             )
 
-        # Stylized section for tags
         console.print("[bold magenta]ADD TAGS[/bold magenta]")
         tag_input = styled_prompt("Enter tags (comma-separated)", "")
 
@@ -330,8 +333,6 @@ def write() -> None:
             entry = enrich_entry(entry)
             created_entry = changelog_db.create(entry)
 
-
-        # Show a beautiful summary of the created entry
         console.print("\n[bold green]✅ ENTRY CREATED SUCCESSFULLY![/bold green]")
 
         # Format the entry nicely
@@ -353,7 +354,6 @@ def write() -> None:
                 tag_names.append(tag.name)
         tags_str = ", ".join(tag_names) if tag_names else "no tags"
 
-        # Determine sentiment color and label
         sentiment_score = created_entry.sentiment_score
         if sentiment_score > 0.5:
             sentiment_color = "bright_green"
@@ -371,7 +371,6 @@ def write() -> None:
             sentiment_color = "bright_red"
             sentiment_label = "Very Negative"
 
-        # Display the entry in a nicely formatted panel
         from rich.panel import Panel
         from rich.text import Text
 
