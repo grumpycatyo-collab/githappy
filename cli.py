@@ -114,20 +114,7 @@ def log(
             user_entries = user_entries[:limit]
 
         if json:
-            import json
-            from datetime import datetime
-
-            class CustomEncoder(json.JSONEncoder):
-                def default(self, obj):
-                    if isinstance(obj, ObjectId):
-                        return str(obj)
-                    if isinstance(obj, datetime):
-                        return obj.isoformat()
-                    if hasattr(obj, "__dict__"):
-                        return obj.__dict__
-                    return super().default(obj)
-
-            print(json.dumps(user_entries, cls=CustomEncoder, indent=2))
+            print(user_entries)
         else:
             max_message_width = 0
             for entry in user_entries:
