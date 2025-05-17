@@ -52,14 +52,14 @@ async def login_for_access_token(form_data: TokenRequest) -> Token:
 
     access_token = create_token(token_data, expires_delta)
 
-    logger.info(f"User {form_data.username} logged in with role {role}")
+    logger.info(f"User {form_data.username} logged in with role {Role.USER}")
     return Token(
         access_token=access_token,
         token_type="bearer",
         expires_in=60,  # 1 minute in seconds
         user_id=str(user.id),
         username=user.username,
-        role=role
+        role=Role.USER
     )
 
 
